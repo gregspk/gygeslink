@@ -1,0 +1,35 @@
+[Unit]
+Description=GygesLink — Configuration réseau + iptables fail-close
+# DefaultDependencies=no : démarrage avant la cible réseau standard
+# (on veut que DROP soit actif AVANT que wlan0 contacte le routeur FAI)
+DefaultDependencies=no
+
+# Ordre : heure d'abord (DS3231), réseau ensuite
+After=gygeslink-timesync.service
+Wants=gygeslink-timesync.service
+
+# Déclarer que ce service remplace network-online.target pour la suite
+Before=network-online.target
+
+[Service]
+# oneshot : le script s'exécute une fois et se termine.
+# Le service reste "actif" après la fin (RemainAfterExit) pour que
+# les services suivants puissent exprimer After=gygeslink-network-setup.
+Type=oneshot
+RemainAfterExit=yes
+
+# Le script fait :
+#   1. Configurer usb0 (192.168.100.1/24) — USB gadget côté PC
+#   2. Appliquer iptables DROP atomiquement (fail-close immédiat)
+#   3. Charger /data/gygeslink/network.conf si présent
+#   4. MAC randomization sur wlan0 (macchanger -r)
+#   5. wpa_supplicant + dhclient wlan0 (connexion WiFi + IP du routeur FAI)
+ExecStart=/usr/local/bin/gygeslink-network-setup.sh
+
+# En cas d'échec du script, le trafic reste bloqué (iptables DROP
+# est appliqué en début de script — si le script plante après l'étape 2,
+# les règles DROP restent en place).
+Restart=no
+
+[Install]
+WantedBy=multi-user.target

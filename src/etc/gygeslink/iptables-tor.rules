@@ -1,0 +1,81 @@
+# GygesLink — règles iptables actives (Tor opérationnel)
+# Remplacent les règles drop une fois que Tor a bootstrappé à 100%.
+# Si Tor s'arrête, gygeslink-iptables-open.service restaure les règles drop.
+
+# ─────────────────────────────────────────────────────────────────────
+# TABLE NAT — redirection transparente vers Tor
+# ─────────────────────────────────────────────────────────────────────
+*nat
+:PREROUTING ACCEPT [0:0]
+:INPUT ACCEPT [0:0]
+:OUTPUT ACCEPT [0:0]
+:POSTROUTING ACCEPT [0:0]
+
+# Exclure le trafic Tor lui-même pour éviter la boucle infinie
+# (Tor se connecte aux bridges via wlan0 — ne pas rediriger vers lui-même)
+-A OUTPUT -m owner --uid-owner debian-tor -j RETURN
+
+# Rediriger les requêtes DNS du PC vers le DNSPort de Tor
+# Tor résout les DNS de façon anonyme — aucun DNS leak vers le FAI
+-A PREROUTING -i usb0 -p udp --dport 53 -j REDIRECT --to-ports 5353
+
+# Rediriger tout le trafic TCP du PC vers le TransPort de Tor
+# Note : tous les paquets TCP, pas seulement SYN — pour les connexions
+# déjà établies au moment où les règles sont appliquées
+-A PREROUTING -i usb0 -p tcp -j REDIRECT --to-ports 9040
+
+COMMIT
+
+# ─────────────────────────────────────────────────────────────────────
+# TABLE MANGLE — ajustements des paquets
+# ─────────────────────────────────────────────────────────────────────
+*mangle
+:PREROUTING ACCEPT [0:0]
+:INPUT ACCEPT [0:0]
+:FORWARD ACCEPT [0:0]
+:OUTPUT ACCEPT [0:0]
+:POSTROUTING ACCEPT [0:0]
+
+# MSS Clamping : ajuste la taille maximale des segments TCP
+# Nécessaire car Tor + obfs4 (+ WireGuard en Tier 2) ajoutent des en-têtes
+# qui réduisent le MTU effectif. Sans ce réglage : timeouts silencieux.
+-A FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
+
+COMMIT
+
+# ─────────────────────────────────────────────────────────────────────
+# TABLE FILTER — politique de filtrage
+# ─────────────────────────────────────────────────────────────────────
+*filter
+:INPUT DROP [0:0]
+:FORWARD DROP [0:0]
+:OUTPUT ACCEPT [0:0]
+
+# Loopback (communications internes — Tor utilise 127.0.0.1)
+-A INPUT -i lo -j ACCEPT
+-A OUTPUT -o lo -j ACCEPT
+
+# Connexions établies : autoriser le retour du trafic légitime
+# (réponses des bridges Tor, réponses DHCP, etc.)
+-A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+
+# Serveur DHCP sur usb0 : le PC doit obtenir une IP
+-A INPUT -i usb0 -p udp --dport 67 -j ACCEPT
+-A OUTPUT -o usb0 -p udp --sport 67 -j ACCEPT
+
+# TransPort Tor : accepter le trafic TCP redirigé depuis usb0
+# (après PREROUTING REDIRECT, les paquets arrivent sur ce port)
+-A INPUT -i usb0 -p tcp --dport 9040 -j ACCEPT
+
+# DNSPort Tor : accepter le trafic DNS redirigé depuis usb0
+-A INPUT -i usb0 -p udp --dport 5353 -j ACCEPT
+
+# ─── Isolation du noise daemon ────────────────────────────────────────
+# Le daemon tourne sous l'utilisateur gygeslink-noise.
+# Seule la connexion au SocksPort de Tor (127.0.0.1:9050) est autorisée.
+# Tout autre trafic réseau de cet utilisateur est bloqué.
+# Si le daemon est compromis, il ne peut pas sortir en clair.
+-A OUTPUT -m owner --uid-owner gygeslink-noise -d 127.0.0.1 -p tcp --dport 9050 -j ACCEPT
+-A OUTPUT -m owner --uid-owner gygeslink-noise -j DROP
+
+COMMIT

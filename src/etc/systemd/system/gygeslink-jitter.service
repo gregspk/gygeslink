@@ -1,0 +1,31 @@
+[Unit]
+Description=GygesLink — Jitter temporel tc netem (anti-corrélation)
+# Le jitter s'active APRÈS l'ouverture iptables (Tor opérationnel).
+# Inutile de jittérer le trafic si Tor bloque encore tout.
+After=gygeslink-iptables-open.service
+Wants=gygeslink-iptables-open.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+
+# Ajouter une discipline de queue netem sur wlan0 (interface côté FAI).
+# Paramètres :
+#   delay 20ms   : délai de base ajouté à chaque paquet
+#   15ms         : variation (±15ms autour de 20ms)
+#   distribution pareto : distribution heavy-tail (queue lourde)
+#
+# POURQUOI PARETO ?
+# Une distribution uniforme ou gaussienne est facile à modéliser
+# statistiquement. La distribution de Pareto a une "queue lourde" :
+# quelques paquets ont un délai très élevé, ce qui rend la corrélation
+# temporelle entre entrée et sortie beaucoup plus difficile à établir.
+# Objectif : corrélation de Pearson < 0.5 entre flux entrant et sortant.
+ExecStart=/sbin/tc qdisc add dev wlan0 root netem \
+    delay 20ms 15ms distribution pareto
+
+# Nettoyage à l'arrêt : supprimer la discipline de queue
+ExecStop=/sbin/tc qdisc del dev wlan0 root
+
+[Install]
+WantedBy=multi-user.target

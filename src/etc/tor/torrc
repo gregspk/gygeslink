@@ -1,0 +1,108 @@
+# GygesLink — Configuration Tor
+# =====================================================================
+#
+# Ce fichier configure Tor comme proxy transparent pour tout le trafic
+# du PC connecté sur usb0 (192.168.100.0/24, USB gadget mode).
+#
+# Architecture :
+#   [PC] → usb0 → iptables REDIRECT → TransPort (9040) → réseau Tor
+#   [DNS] → usb0 → iptables REDIRECT → DNSPort (5353) → réseau Tor
+#   [noise daemon] → SocksPort (9050) → réseau Tor
+#
+# Ce fichier est STATIQUE. Deux directives sont gérées dynamiquement :
+#   - "OutboundBindInterface wg0" : ajoutée/retirée par gygeslink-tor-prestart.sh
+#     selon que WireGuard est monté (Tier 2) ou non (Tier 1).
+#   - Les bridges : chargés depuis /data/gygeslink/bridges.conf
+#     (partition persistante, survive aux mises à jour OS).
+#
+# =====================================================================
+
+# ── Répertoire de données Tor ─────────────────────────────────────────
+# Tor y stocke son état, ses descripteurs de relais, ses clés.
+DataDirectory /var/lib/tor
+
+# ── Logs ──────────────────────────────────────────────────────────────
+# "notice" : messages importants uniquement (bootstrapping, erreurs).
+# Pour déboguer, remplacer par "info" temporairement.
+Log notice file /var/log/tor/notices.log
+
+# ── Port SOCKS — pour le noise daemon ────────────────────────────────
+# Le noise daemon (gygeslink-noise) utilise ce port pour envoyer
+# son trafic leurre via Tor.
+# Lié uniquement à 127.0.0.1 : inaccessible depuis le réseau externe.
+SocksPort 127.0.0.1:9050
+
+# ── TransPort — proxy transparent TCP ────────────────────────────────
+# Écoute sur 192.168.100.1:9040 (l'IP du Pi côté PC).
+# iptables redirige tout TCP entrant sur usb0 vers ce port.
+# Flags d'isolation : chaque combinaison client/proto/dest obtient
+# un circuit Tor distinct → difficile de corréler les flux.
+#
+#   IsolateClientAddr    : circuits séparés par IP source
+#   IsolateClientProtocol: circuits séparés par protocole (HTTP vs HTTPS…)
+#   IsolateDestAddr      : circuits séparés par IP de destination
+#   IsolateDestPort      : circuits séparés par port de destination
+#
+TransPort 192.168.100.1:9040 IsolateClientAddr IsolateClientProtocol IsolateDestAddr IsolateDestPort
+
+# ── DNSPort — résolution DNS via Tor ─────────────────────────────────
+# Écoute sur 192.168.100.1:5353.
+# iptables redirige tout UDP/53 entrant sur usb0 vers ce port.
+# Résout les noms de domaine via le réseau Tor → aucune fuite DNS.
+DNSPort 192.168.100.1:5353
+
+# ── Proxy transparent : support des adresses .onion ──────────────────
+# AutomapHostsOnResolve permet de résoudre les .onion à travers
+# le proxy transparent (le PC peut accéder aux services cachés
+# sans configuration spéciale).
+AutomapHostsOnResolve 1
+VirtualAddrNetworkIPv4 10.192.0.0/10
+
+# ── Bridges obfs4 — obfuscation du trafic Tor ────────────────────────
+#
+# POURQUOI LES BRIDGES ?
+# Sans bridge, le trafic Tor est reconnaissable par DPI (Deep Packet
+# Inspection) même s'il est chiffré. Un FAI ou un gouvernement peut
+# détecter la signature Tor et bloquer la connexion.
+# obfs4 transforme le trafic Tor en trafic aléatoire indistinguable.
+#
+# COMMENT OBTENIR DES BRIDGES ?
+# Méthode 1 (navigateur) : https://bridges.torproject.org
+#   → choisir "obfs4" → copier les 3 lignes "Bridge obfs4 ..."
+# Méthode 2 (email) : envoyer "get transport obfs4" à bridges@torproject.org
+# Méthode 3 (Tor Browser) : Paramètres → Bridges → Obtenir un bridge
+#
+# REMARQUE SUR iat-mode :
+#   iat-mode=0 : pas d'obfuscation de timing (rapide, recommandé)
+#   iat-mode=1 : obfuscation du timing inter-paquets (plus lent mais
+#                résiste mieux aux analyses de timing)
+#   Utiliser iat-mode=0 sauf si le FAI pratique une analyse de timing.
+#
+UseBridges 1
+ClientTransportPlugin obfs4 exec /usr/bin/obfs4proxy
+
+# ── Bridges chargés depuis la partition persistante ───────────────────
+# /data/gygeslink/bridges.conf contient les lignes "Bridge obfs4 ..."
+# Ce fichier est sur la partition /data (ext4, hors overlayfs) :
+# il survit aux reboots, aux mises à jour OS, et au réinitialisation.
+#
+# FORMAT du fichier bridges.conf :
+#   Bridge obfs4 <IP>:<PORT> <FINGERPRINT> cert=<CERT> iat-mode=0
+#   Bridge obfs4 <IP>:<PORT> <FINGERPRINT> cert=<CERT> iat-mode=0
+#   Bridge obfs4 <IP>:<PORT> <FINGERPRINT> cert=<CERT> iat-mode=0
+#
+# IMPORTANT : ce fichier doit exister au premier boot.
+# Il est créé par gygeslink-setup-portal.py OU manuellement.
+# S'il est absent, Tor refusera de démarrer (UseBridges 1 sans bridge).
+#
+%include /data/gygeslink/bridges.conf
+
+# ── OutboundBindInterface (géré dynamiquement) ────────────────────────
+# Cette directive N'EST PAS présente ici statiquement.
+# Elle est ajoutée/retirée au démarrage par gygeslink-tor-prestart.sh :
+#
+#   TIER=2 → "OutboundBindInterface wg0" ajouté  → Tor sort via Mullvad
+#   TIER=1 → "OutboundBindInterface wg0" retiré  → Tor sort via wlan0
+#
+# overlayfs étant actif en production, ces modifications sont
+# volatiles (réinitialisées à chaque reboot → re-détection propre).

@@ -1,0 +1,38 @@
+# GygesLink — règles iptables fail-close
+# Appliquées au boot AVANT toute ouverture réseau.
+# Tout trafic est bloqué par défaut — l'ouverture n'a lieu que si Tor est opérationnel.
+
+*filter
+:INPUT DROP [0:0]
+:FORWARD DROP [0:0]
+:OUTPUT DROP [0:0]
+
+# Loopback toujours autorisé (communications internes au boîtier)
+-A INPUT -i lo -j ACCEPT
+-A OUTPUT -o lo -j ACCEPT
+
+# DHCP : le PC doit pouvoir obtenir une IP même en fail-close
+# (sans IP, le PC ne sait même pas qu'il est branché au boîtier)
+-A INPUT -i usb0 -p udp --dport 67 -j ACCEPT
+-A OUTPUT -o usb0 -p udp --sport 67 -j ACCEPT
+
+# NTP sortant du boîtier uniquement (si DS3231 indisponible au premier boot)
+# Désactiver cette règle une fois le DS3231 confirmé fonctionnel
+-A OUTPUT -o wlan0 -p udp --dport 123 -j ACCEPT
+
+COMMIT
+
+*nat
+:PREROUTING ACCEPT [0:0]
+:INPUT ACCEPT [0:0]
+:OUTPUT ACCEPT [0:0]
+:POSTROUTING ACCEPT [0:0]
+COMMIT
+
+*mangle
+:PREROUTING ACCEPT [0:0]
+:INPUT ACCEPT [0:0]
+:FORWARD ACCEPT [0:0]
+:OUTPUT ACCEPT [0:0]
+:POSTROUTING ACCEPT [0:0]
+COMMIT

@@ -1,0 +1,33 @@
+[Unit]
+Description=GygesLink Noise Daemon — trafic leurre via Tor
+# Démarre uniquement après que les règles iptables Tor sont actives
+# et que le trafic est effectivement redirigé
+After=gygeslink-iptables-open.service
+Requires=gygeslink-iptables-open.service
+
+[Service]
+Type=simple
+
+# Utilisateur isolé — iptables bloque tout OUTPUT sauf vers 127.0.0.1:9050
+User=gygeslink-noise
+
+ExecStart=/usr/bin/python3 /usr/local/bin/noise_generator.py
+
+# Redémarrage automatique si le daemon plante (ex: Tor temporairement
+# injoignable au démarrage)
+Restart=on-failure
+RestartSec=10
+
+# Limites de sécurité supplémentaires
+# Empêche le daemon d'accéder aux fichiers système sensibles
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+
+# Autorise la lecture de /data/gygeslink (pour cohérence future)
+# mais le daemon n'en a pas besoin actuellement
+ReadOnlyPaths=/data/gygeslink
+
+[Install]
+WantedBy=multi-user.target

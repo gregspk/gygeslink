@@ -1,0 +1,32 @@
+[Unit]
+Description=GygesLink — Daemon LED RGB (indicateur d'état)
+# La LED démarre en dernier : elle reflète l'état de toute la chaîne.
+# Si elle ne démarre pas (gygeslink-led.py manquant), ce n'est pas
+# un problème de sécurité — le trafic reste protégé.
+After=gygeslink-iptables-open.service
+After=gygeslink-noise.service
+After=gygeslink-jitter.service
+# Wants (pas Requires) : le boîtier fonctionne sans LED si problème GPIO
+Wants=gygeslink-iptables-open.service
+
+[Service]
+Type=simple
+
+ExecStart=/usr/bin/python3 /usr/local/bin/gygeslink-led.py
+
+# Redémarrage en cas de crash du daemon LED
+# (ex: conflit GPIO au démarrage avec un autre processus)
+Restart=on-failure
+RestartSec=5
+
+# Sécurité
+# ProtectSystem=strict n'est PAS ajouté : libgpiod nécessite l'accès
+# à /dev/gpiochipN (périphériques kernel GPIO).
+# Ces chemins sont accessibles même sans ProtectSystem car /dev est
+# toujours monté. NoNewPrivileges et PrivateTmp suffisent.
+User=root
+NoNewPrivileges=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

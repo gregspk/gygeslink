@@ -1,0 +1,14 @@
+# GygesLink — règles ip6tables actives (identiques aux règles drop)
+# IPv6 est désactivé par design — ces règles bloquent tout trafic IPv6
+# même une fois Tor opérationnel. Tor ne supporte pas IPv6 en mode
+# proxy transparent dans cette configuration.
+
+*filter
+:INPUT DROP [0:0]
+:FORWARD DROP [0:0]
+:OUTPUT DROP [0:0]
+
+-A INPUT -i lo -j ACCEPT
+-A OUTPUT -o lo -j ACCEPT
+
+COMMIT

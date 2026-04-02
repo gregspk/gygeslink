@@ -1,0 +1,45 @@
+[Unit]
+Description=GygesLink Setup — Portail de configuration (premier boot)
+# Ne démarre QUE si le setup n'a pas encore été fait
+ConditionPathExists=!/data/gygeslink/setup-done
+
+# Démarre après la configuration réseau de base (usb0 prêt, iptables DROP actif)
+After=gygeslink-network-setup.service
+
+# Empêche Tor de démarrer pendant le setup (pas encore de WiFi configuré)
+Before=gygeslink-tor.service
+
+[Service]
+# simple : ExecStart est le processus principal (Flask portal, bloquant)
+Type=simple
+
+# ── Règles iptables pour le portail ──────────────────────────────────
+# Redirige HTTP (80) → HTTPS (443) sur usb0 :
+# les navigateurs qui tentent http:// atterrissent quand même sur le portail.
+ExecStartPre=/sbin/iptables -t nat -A PREROUTING -i usb0 -p tcp --dport 80 \
+    -j REDIRECT --to-port 443
+# Autorise le trafic du portail sur usb0
+ExecStartPre=/sbin/iptables -A INPUT  -i usb0 -p tcp --dport 443 -j ACCEPT
+ExecStartPre=/sbin/iptables -A OUTPUT -o usb0 -j ACCEPT
+
+# ── Processus principal : portail Flask ──────────────────────────────
+# Flask écoute sur 192.168.100.1:443 (HTTPS, certificat auto-signé).
+# Accessible depuis le PC branché en USB-C — pas besoin de WiFi.
+# Gère le premier boot : choix Classic/Advanced, config WiFi, WireGuard, reboot.
+ExecStart=/usr/bin/python3 /usr/local/bin/gygeslink-setup-portal.py
+
+# ── Nettoyage à l'arrêt ───────────────────────────────────────────────
+ExecStopPost=/bin/sh -c '/sbin/iptables -t nat -D PREROUTING -i usb0 -p tcp --dport 80 -j REDIRECT --to-port 443 2>/dev/null || true'
+ExecStopPost=/bin/sh -c '/sbin/iptables -D INPUT  -i usb0 -p tcp --dport 443 -j ACCEPT 2>/dev/null || true'
+ExecStopPost=/bin/sh -c '/sbin/iptables -D OUTPUT -o usb0 -j ACCEPT 2>/dev/null || true'
+
+User=root
+
+# Timeout généreux : le portail attend une action humaine
+TimeoutStartSec=300
+TimeoutStopSec=10
+
+Restart=no
+
+[Install]
+WantedBy=multi-user.target

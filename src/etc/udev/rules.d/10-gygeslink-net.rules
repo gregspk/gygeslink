@@ -1,0 +1,8 @@
+# GygesLink — Règles udev réseau (Radxa Zero)
+#
+# Sur la Radxa Zero, l'interface côté PC est usb0 (USB gadget g_ether),
+# créée automatiquement par le kernel via dwc2 + g_ether au boot.
+# Aucune règle d'épinglage nécessaire — usb0 est toujours usb0.
+#
+# Les règles d'épinglage USB-Ethernet (KERNELS) de l'ancienne version
+# Pi Zero 2W ont été supprimées : elles ne s'appliquent pas ici.

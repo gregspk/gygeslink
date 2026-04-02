@@ -1,0 +1,26 @@
+[Unit]
+Description=GygesLink — Surveillance bouton GPIO (reset mode setup)
+# Démarre après tous les services principaux
+# (on veut que le système soit stable avant d'autoriser un reset)
+After=multi-user.target
+
+[Service]
+Type=simple
+
+ExecStart=/usr/bin/python3 /usr/local/bin/gygeslink-button.py
+
+# Redémarrage automatique si le daemon plante (ex: RPi.GPIO non disponible
+# au premier démarrage, import failure, etc.)
+Restart=always
+RestartSec=5
+
+# Sécurité renforcée
+# EXCEPTION : pas de ProtectSystem=strict car le daemon doit pouvoir
+# supprimer /data/gygeslink/setup-done et appeler systemctl reboot.
+# L'accès root est requis pour ces deux opérations.
+User=root
+NoNewPrivileges=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target
