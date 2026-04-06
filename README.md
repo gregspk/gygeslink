@@ -42,7 +42,7 @@ Les règles iptables DROP s'appliquent avant que le réseau soit disponible. Si 
 1. Brancher le boîtier en USB-C sur le PC → LED bleue clignotante
 2. Ouvrir `https://192.168.100.1` depuis le PC
 3. Saisir le SSID + mot de passe WiFi du routeur
-4. Choisir Classic ou Advanced (voucher Mullvad requis pour Advanced)
+4. Choisir Phantom ou Wraith (voucher Mullvad requis pour Advanced)
 5. Reboot automatique → LED verte = protection active
 
 Le bouton physique (maintien 5s) remet le boîtier en mode setup (changement de réseau, voucher, etc.).

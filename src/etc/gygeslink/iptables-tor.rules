@@ -49,19 +49,40 @@ COMMIT
 *filter
 :INPUT DROP [0:0]
 :FORWARD DROP [0:0]
-:OUTPUT ACCEPT [0:0]
+:OUTPUT DROP [0:0]
+
+# ─── Isolation du noise daemon ────────────────────────────────────────
+# DOIT être placé AVANT la règle ESTABLISHED,RELATED pour empêcher
+# qu'une connexion établie par le daemon ne soit autorisée via RELATED.
+# Seule la connexion au SocksPort de Tor (127.0.0.1:9050) est autorisée.
+-A OUTPUT -m owner --uid-owner gygeslink-noise -d 127.0.0.1 -p tcp --dport 9050 -j ACCEPT
+-A OUTPUT -m owner --uid-owner gygeslink-noise -j DROP
 
 # Loopback (communications internes — Tor utilise 127.0.0.1)
 -A INPUT -i lo -j ACCEPT
 -A OUTPUT -o lo -j ACCEPT
 
 # Connexions établies : autoriser le retour du trafic légitime
-# (réponses des bridges Tor, réponses DHCP, etc.)
+# (réponses des bridges Tor, réponses Flask portail, etc.)
 -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+-A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
 
 # Serveur DHCP sur usb0 : le PC doit obtenir une IP
 -A INPUT -i usb0 -p udp --dport 67 -j ACCEPT
 -A OUTPUT -o usb0 -p udp --sport 67 -j ACCEPT
+
+# DHCP client → routeur FAI (renouvellement de bail wlan0)
+-A OUTPUT -o wlan0 -p udp --sport 68 --dport 67 -j ACCEPT
+
+# NTP sortant (si DS3231 indisponible) — aligné sur iptables-drop.rules
+-A OUTPUT -o wlan0 -p udp --dport 123 -j ACCEPT
+
+# WireGuard → endpoint Mullvad (port 51820 fixé dans le template wg0.conf)
+# Les paquets chiffrés wg0→wlan0 sont injectés par le kernel
+-A OUTPUT -o wlan0 -p udp --dport 51820 -j ACCEPT
+
+# Tor daemon → bridges/relays (wlan0 en Tier 1, wg0 en Tier 2)
+-A OUTPUT -m owner --uid-owner debian-tor -j ACCEPT
 
 # TransPort Tor : accepter le trafic TCP redirigé depuis usb0
 # (après PREROUTING REDIRECT, les paquets arrivent sur ce port)
@@ -69,13 +90,5 @@ COMMIT
 
 # DNSPort Tor : accepter le trafic DNS redirigé depuis usb0
 -A INPUT -i usb0 -p udp --dport 5353 -j ACCEPT
-
-# ─── Isolation du noise daemon ────────────────────────────────────────
-# Le daemon tourne sous l'utilisateur gygeslink-noise.
-# Seule la connexion au SocksPort de Tor (127.0.0.1:9050) est autorisée.
-# Tout autre trafic réseau de cet utilisateur est bloqué.
-# Si le daemon est compromis, il ne peut pas sortir en clair.
--A OUTPUT -m owner --uid-owner gygeslink-noise -d 127.0.0.1 -p tcp --dport 9050 -j ACCEPT
--A OUTPUT -m owner --uid-owner gygeslink-noise -j DROP
 
 COMMIT

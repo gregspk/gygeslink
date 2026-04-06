@@ -20,6 +20,7 @@ Sécurité :
   - Le port 80 est redirigé vers 443 par iptables (voir gygeslink-setup.service)
 """
 
+import ipaddress
 import logging
 import os
 import re
@@ -424,6 +425,13 @@ def build_wg_config(private_key: str, api_data: dict) -> tuple[str, datetime]:
     assigned_ip   = api_data.get("ip", "")
     expiry_str    = api_data.get("expiry", "")
 
+    # Valider assigned_ip — prévient toute injection dans wg0.conf
+    # si la réponse API était altérée (MITM, réponse malformée).
+    try:
+        ipaddress.ip_address(assigned_ip)
+    except ValueError:
+        raise ValueError(f"Adresse IP invalide retournée par l'API Mullvad : {assigned_ip!r}")
+
     config = f"""[Interface]
 PrivateKey = {private_key}
 Address = {assigned_ip}/32
@@ -480,6 +488,10 @@ def wifi():
         return render_template_string(HTML_WIFI, error="Mot de passe trop court (8 caractères minimum pour WPA2).")
     if len(password) > 63:
         return render_template_string(HTML_WIFI, error="Mot de passe trop long (63 caractères max).")
+    # Rejeter les caractères de contrôle — prévient l'injection de directives
+    # wpa_supplicant via un retour à la ligne dans le SSID ou le mot de passe.
+    if re.search(r'[\r\n\x00]', ssid) or re.search(r'[\r\n\x00]', password):
+        return render_template_string(HTML_WIFI, error="Caractères invalides dans le SSID ou le mot de passe.")
 
     # Écrire la config wpa_supplicant
     # Les guillemets dans SSID/password sont échappés pour éviter l'injection

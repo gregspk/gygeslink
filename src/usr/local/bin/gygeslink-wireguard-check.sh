@@ -12,7 +12,7 @@
 set -uo pipefail
 
 WG_CONF="/data/gygeslink/wg0.conf"
-STATUS_FILE="/tmp/gygeslink-tier.status"
+STATUS_FILE="/run/gygeslink-tier.status"
 
 LOG()  { echo "[gygeslink-wireguard] $*"; }
 ERR()  { echo "[gygeslink-wireguard] ERREUR: $*" >&2; }

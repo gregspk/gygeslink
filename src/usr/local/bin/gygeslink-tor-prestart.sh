@@ -17,7 +17,7 @@
 
 set -uo pipefail
 
-STATUS_FILE="/tmp/gygeslink-tier.status"
+STATUS_FILE="/run/gygeslink-tier.status"
 TORRC="/etc/tor/torrc"
 
 LOG() { echo "[gygeslink-tor-prestart] $*"; }
@@ -43,10 +43,10 @@ done
 
 # ─────────────────────────────────────────────────────────────────────
 # Lire le tier détecté
-# source est plus robuste que grep+cut : charge les variables du fichier
+# grep+cut au lieu de source : évite l'exécution de code arbitraire
+# si le fichier était compromis (source équivaut à eval).
 # ─────────────────────────────────────────────────────────────────────
-# shellcheck source=/dev/null
-source "$STATUS_FILE"
+TIER=$(grep "^TIER=" "$STATUS_FILE" | cut -d= -f2 | tr -dc '12')
 TIER="${TIER:-1}"
 
 LOG "Tier détecté : $TIER"

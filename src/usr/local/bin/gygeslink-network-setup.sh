@@ -23,7 +23,7 @@ LOG "Configuration usb0 (côté PC, USB gadget)..."
 
 ip link set usb0 up
 ip addr flush dev usb0 2>/dev/null || true
-ip addr add 192.168.100.1/24 dev usb0
+ip addr add "${USB0_ADDR:-192.168.100.1/24}" dev usb0
 
 # Activer le routage IP (le boîtier doit faire transiter les paquets)
 sysctl -w net.ipv4.ip_forward=1 > /dev/null
@@ -67,8 +67,20 @@ LOG "Règles fail-close actives — tout trafic bloqué sauf DHCP et loopback."
 # ─────────────────────────────────────────────────────────────────────
 if [ -f /data/gygeslink/network.conf ]; then
     LOG "Chargement de /data/gygeslink/network.conf..."
-    # shellcheck source=/dev/null
-    source /data/gygeslink/network.conf
+    # Parser sans source/eval : seules les variables connues sont acceptées.
+    # source équivaut à eval — toute commande dans le .conf s'exécuterait en root.
+    while IFS='=' read -r key val; do
+        # Ignorer commentaires et lignes vides
+        [[ "$key" =~ ^[[:space:]]*# ]] && continue
+        [[ -z "${key// /}" ]] && continue
+        key="${key// /}"
+        val="${val// /}"
+        case "$key" in
+            USB0_ADDR)    USB0_ADDR="$val"    ;;
+            WIFI_TIMEOUT) WIFI_TIMEOUT="$val" ;;
+            DHCP_TIMEOUT) DHCP_TIMEOUT="$val" ;;
+        esac
+    done < /data/gygeslink/network.conf
 fi
 
 # ─────────────────────────────────────────────────────────────────────
@@ -112,9 +124,9 @@ if ! wpa_supplicant -B -i wlan0 -c "$WIFI_CONF" -P /run/wpa_supplicant-wlan0.pid
     exit 0
 fi
 
-# Attendre l'association WiFi (max 20s)
+# Attendre l'association WiFi (max WIFI_TIMEOUT secondes, défaut 20s)
 WAITED=0
-while [ $WAITED -lt 20 ]; do
+while [ $WAITED -lt "${WIFI_TIMEOUT:-20}" ]; do
     if wpa_cli -i wlan0 status 2>/dev/null | grep -q "wpa_state=COMPLETED"; then
         LOG "WiFi associé."
         break
@@ -123,15 +135,15 @@ while [ $WAITED -lt 20 ]; do
     WAITED=$((WAITED + 1))
 done
 
-if [ $WAITED -ge 20 ]; then
-    ERR "Association WiFi timeout (20s) — SSID joignable ?"
+if [ $WAITED -ge "${WIFI_TIMEOUT:-20}" ]; then
+    ERR "Association WiFi timeout (${WIFI_TIMEOUT:-20}s) — SSID joignable ?"
     exit 0
 fi
 
 # Obtenir une IP via DHCP sur wlan0
 LOG "Obtention IP sur wlan0 via DHCP..."
 
-if timeout 30 dhclient -v wlan0 2>/dev/null; then
+if timeout "${DHCP_TIMEOUT:-30}" dhclient -v wlan0 2>/dev/null; then
     WLAN0_IP=$(ip addr show wlan0 | awk '/inet / {print $2}')
     LOG "wlan0 configuré : $WLAN0_IP"
 else
