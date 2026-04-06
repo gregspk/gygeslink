@@ -20,6 +20,11 @@
 # Désactiver cette règle une fois le DS3231 confirmé fonctionnel
 -A OUTPUT -o wlan0 -p udp --dport 123 -j ACCEPT
 
+# WireGuard → endpoint Mullvad (Tier 2)
+# Nécessaire dès la phase de boot pour que wg-quick up puisse compléter
+# le handshake avant le démarrage de Tor.
+-A OUTPUT -o wlan0 -p udp --dport 51820 -j ACCEPT
+
 COMMIT
 
 *nat

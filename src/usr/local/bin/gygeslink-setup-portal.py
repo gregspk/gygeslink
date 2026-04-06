@@ -425,12 +425,26 @@ def build_wg_config(private_key: str, api_data: dict) -> tuple[str, datetime]:
     assigned_ip   = api_data.get("ip", "")
     expiry_str    = api_data.get("expiry", "")
 
-    # Valider assigned_ip — prévient toute injection dans wg0.conf
-    # si la réponse API était altérée (MITM, réponse malformée).
+    # Valider les trois champs injectés dans wg0.conf — confiance zéro sur
+    # la réponse API (MITM, API Mullvad compromise, réponse malformée).
+
+    # assigned_ip : IP de l'interface tunnel côté client
     try:
         ipaddress.ip_address(assigned_ip)
     except ValueError:
-        raise ValueError(f"Adresse IP invalide retournée par l'API Mullvad : {assigned_ip!r}")
+        raise ValueError(f"Adresse IP invalide retournée par l'API Mullvad (assigned_ip) : {assigned_ip!r}")
+
+    # server_ip : IP de l'endpoint Mullvad (Endpoint = server_ip:51820)
+    try:
+        ipaddress.ip_address(server_ip)
+    except ValueError:
+        raise ValueError(f"Adresse IP invalide retournée par l'API Mullvad (server_ip) : {server_ip!r}")
+
+    # server_pubkey : clé publique Curve25519 encodée en base64
+    # Format WireGuard : 32 octets → 44 caractères base64 (dont 1 '=' de padding)
+    WG_PUBKEY_RE = re.compile(r'^[A-Za-z0-9+/]{43}=$')
+    if not WG_PUBKEY_RE.match(server_pubkey):
+        raise ValueError(f"Clé publique serveur invalide retournée par l'API Mullvad : {server_pubkey!r}")
 
     config = f"""[Interface]
 PrivateKey = {private_key}

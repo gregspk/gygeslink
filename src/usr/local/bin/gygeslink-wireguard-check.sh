@@ -2,7 +2,7 @@
 # GygesLink — Détection du tier et montage WireGuard
 # Exécuté par gygeslink-wireguard.service (Type=oneshot)
 #
-# Résultat écrit dans /tmp/gygeslink-tier.status :
+# Résultat écrit dans /run/gygeslink-tier.status :
 #   TIER=1  →  Tor sortira directement via wlan0 (Classic)
 #   TIER=2  →  Tor sortira via wg0 Mullvad (Advanced)
 #
@@ -53,23 +53,11 @@ fi
 
 LOG "Endpoint Mullvad : $ENDPOINT"
 
-# ─── Test de joignabilité via DNS ─────────────────────────────────────
-# On utilise getent hosts (résolution DNS) plutôt que ping (ICMP).
-# Raison : Mullvad et de nombreux VPN bloquent ICMP sur leurs endpoints.
-# Un ping raté ne signifie pas que le serveur est injoignable.
-# La résolution DNS est beaucoup plus fiable.
-LOG "Test de joignabilité de l'endpoint..."
-
-if ! timeout 5 getent hosts "$ENDPOINT" > /dev/null 2>&1; then
-    ERR "Endpoint '$ENDPOINT' non résolvable. FAI bloque-t-il le DNS ?"
-    LOG "Fallback Tier 1 : Tor sortira via wlan0."
-    write_status 1
-    exit 0
-fi
-
-LOG "Endpoint joignable."
-
 # ─── Tentative de montage WireGuard ───────────────────────────────────
+# Note : pas de pre-check DNS/ping — l'endpoint est toujours une IP (pas
+# un hostname) et getent hosts sur une IP ne génère aucune requête réseau
+# (validation locale uniquement, toujours vraie). Le vrai test de
+# connectivité est le handshake WireGuard lui-même (wg-quick up + ip addr).
 LOG "Montage de l'interface wg0..."
 
 # S'assurer que wg0 n'est pas déjà monté (reboot partiel, etc.)
