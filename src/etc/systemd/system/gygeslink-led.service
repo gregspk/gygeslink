@@ -27,6 +27,7 @@ RestartSec=5
 User=root
 NoNewPrivileges=yes
 PrivateTmp=yes
+ProtectHome=yes
 
 [Install]
 WantedBy=multi-user.target

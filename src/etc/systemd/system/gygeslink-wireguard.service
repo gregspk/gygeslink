@@ -14,7 +14,7 @@ ExecStart=/usr/local/bin/gygeslink-wireguard-check.sh
 # Si le script échoue (cas imprévu), on écrit Tier 1 manuellement
 # pour ne pas bloquer le démarrage de Tor
 ExecStartPost=/bin/bash -c \
-    'test -f /tmp/gygeslink-tier.status || echo "TIER=1" > /tmp/gygeslink-tier.status'
+    'test -f /run/gygeslink-tier.status || echo "TIER=1" > /run/gygeslink-tier.status'
 
 [Install]
 WantedBy=multi-user.target

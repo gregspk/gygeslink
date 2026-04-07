@@ -20,7 +20,7 @@ ExecStartPre=/sbin/iptables -t nat -A PREROUTING -i usb0 -p tcp --dport 80 \
     -j REDIRECT --to-port 443
 # Autorise le trafic du portail sur usb0
 ExecStartPre=/sbin/iptables -A INPUT  -i usb0 -p tcp --dport 443 -j ACCEPT
-ExecStartPre=/sbin/iptables -A OUTPUT -o usb0 -j ACCEPT
+ExecStartPre=/sbin/iptables -A OUTPUT -o usb0 -p tcp --sport 443 -j ACCEPT
 
 # ── Processus principal : portail Flask ──────────────────────────────
 # Flask écoute sur 192.168.100.1:443 (HTTPS, certificat auto-signé).
@@ -31,7 +31,7 @@ ExecStart=/usr/bin/python3 /usr/local/bin/gygeslink-setup-portal.py
 # ── Nettoyage à l'arrêt ───────────────────────────────────────────────
 ExecStopPost=/bin/sh -c '/sbin/iptables -t nat -D PREROUTING -i usb0 -p tcp --dport 80 -j REDIRECT --to-port 443 2>/dev/null || true'
 ExecStopPost=/bin/sh -c '/sbin/iptables -D INPUT  -i usb0 -p tcp --dport 443 -j ACCEPT 2>/dev/null || true'
-ExecStopPost=/bin/sh -c '/sbin/iptables -D OUTPUT -o usb0 -j ACCEPT 2>/dev/null || true'
+ExecStopPost=/bin/sh -c '/sbin/iptables -D OUTPUT -o usb0 -p tcp --sport 443 -j ACCEPT 2>/dev/null || true'
 
 User=root
 

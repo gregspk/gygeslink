@@ -9,7 +9,7 @@ Type=simple
 
 ExecStart=/usr/bin/python3 /usr/local/bin/gygeslink-button.py
 
-# Redémarrage automatique si le daemon plante (ex: RPi.GPIO non disponible
+# Redémarrage automatique si le daemon plante (ex: libgpiod non disponible
 # au premier démarrage, import failure, etc.)
 Restart=always
 RestartSec=5

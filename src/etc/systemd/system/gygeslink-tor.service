@@ -26,8 +26,9 @@ User=debian-tor
 Group=debian-tor
 
 # Configurer OutboundBindInterface selon le tier (Tier 1 ou Tier 2)
-# avant de lancer Tor. Ce script lit /tmp/gygeslink-tier.status.
-ExecStartPre=/usr/local/bin/gygeslink-tor-prestart.sh
+# avant de lancer Tor. Ce script lit /run/gygeslink-tier.status.
+# Préfixe + : ExecStartPre tourne en root (nécessaire pour sed -i sur torrc).
+ExecStartPre=+/usr/local/bin/gygeslink-tor-prestart.sh
 
 ExecStart=/usr/bin/tor -f /etc/tor/torrc
 

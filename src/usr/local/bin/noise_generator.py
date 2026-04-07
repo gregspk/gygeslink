@@ -129,6 +129,8 @@ async def noise_loop() -> None:
     il n'y a JAMAIS de fallback vers une connexion directe.
     """
     semaphore = asyncio.Semaphore(MAX_CONCURRENT)
+    # Référence forte sur les tasks actives — évite les warnings GC Python 3.12+
+    _tasks: set[asyncio.Task] = set()
 
     # ProxyConnector force toutes les connexions via SOCKS5 (Tor).
     # rdns=True : la résolution DNS est faite par Tor, pas localement.
@@ -149,7 +151,9 @@ async def noise_loop() -> None:
 
             # Lancer la requête sans attendre sa fin
             # (on enchaîne les requêtes sans se bloquer)
-            asyncio.create_task(fetch_noise(session, url, semaphore))
+            task = asyncio.create_task(fetch_noise(session, url, semaphore))
+            _tasks.add(task)
+            task.add_done_callback(_tasks.discard)
 
             # Attendre un intervalle aléatoire avant la prochaine requête
             delay = random.uniform(INTERVAL_MIN, INTERVAL_MAX)

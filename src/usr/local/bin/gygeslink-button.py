@@ -62,8 +62,10 @@ logger = logging.getLogger("button")
 # Logique bouton
 # ─────────────────────────────────────────────────────────────────────
 
+WIFI_CONF_FILE = Path("/data/gygeslink/wifi.conf")
+
 def trigger_setup_reset() -> None:
-    """Supprime le flag setup-done et redémarre en mode setup."""
+    """Supprime le flag setup-done et les credentials WiFi, redémarre en mode setup."""
     logger.warning("Maintien 5s détecté — reset vers mode setup.")
 
     if SETUP_DONE_FILE.exists():
@@ -73,7 +75,14 @@ def trigger_setup_reset() -> None:
         except OSError as e:
             logger.error("Impossible de supprimer setup-done : %s", e)
     else:
-        logger.info("setup-done déjà absent — reboot direct.")
+        logger.info("setup-done déjà absent.")
+
+    if WIFI_CONF_FILE.exists():
+        try:
+            WIFI_CONF_FILE.unlink()
+            logger.info("wifi.conf supprimé — reconfiguration WiFi requise.")
+        except OSError as e:
+            logger.error("Impossible de supprimer wifi.conf : %s", e)
 
     logger.info("Reboot dans 1 seconde...")
     time.sleep(1)
