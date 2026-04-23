@@ -1,6 +1,8 @@
 *.tmp.*
 .claude/
 CLAUDE.md
+CORRECTIONS_PLAN.md
+.gitattributes
 docs/
 corrections-*.txt
 file_list.txt
