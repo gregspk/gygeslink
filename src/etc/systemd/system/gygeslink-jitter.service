@@ -21,7 +21,7 @@ RemainAfterExit=yes
 # quelques paquets ont un délai très élevé, ce qui rend la corrélation
 # temporelle entre entrée et sortie beaucoup plus difficile à établir.
 # Objectif : corrélation de Pearson < 0.5 entre flux entrant et sortant.
-ExecStart=/sbin/tc qdisc add dev wlan0 root netem \
+ExecStart=/sbin/tc qdisc replace dev wlan0 root netem \
     delay 20ms 15ms distribution pareto
 
 # Nettoyage à l'arrêt : supprimer la discipline de queue

@@ -13,6 +13,11 @@ Description=GygesLink — Ouverture iptables (Tor opérationnel)
 After=gygeslink-tor.service
 Requires=gygeslink-tor.service
 
+# PartOf : si Tor redémarre (Restart=on-failure), ce service redémarre aussi
+# pour ré-appliquer iptables-tor.rules. Sans cela, Tor serait actif mais le
+# trafic resterait bloqué par iptables-drop.rules.
+PartOf=gygeslink-tor.service
+
 # BindsTo : si Tor s'arrête (crash, kill), ce service s'arrête aussi
 # → ExecStop applique à nouveau iptables-drop.rules → fail-close automatique.
 # C'est la garantie que le trafic ne "fuit" JAMAIS en clair si Tor tombe.

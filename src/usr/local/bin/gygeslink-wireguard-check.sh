@@ -60,6 +60,10 @@ LOG "Endpoint Mullvad : $ENDPOINT"
 # connectivité est le handshake WireGuard lui-même (wg-quick up + ip addr).
 LOG "Montage de l'interface wg0..."
 
+# Activer src_valid_mark requis par wg-quick pour le policy routing
+# (Tor bind sur wg0 via OutboundBindInterface)
+sysctl -w net.ipv4.conf.all.src_valid_mark=1 > /dev/null 2>&1 || true
+
 # S'assurer que wg0 n'est pas déjà monté (reboot partiel, etc.)
 wg-quick down wg0 2>/dev/null || true
 

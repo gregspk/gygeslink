@@ -81,12 +81,17 @@ fi
 BRIDGES_CONF="/data/gygeslink/bridges.conf"
 HAS_VALID_BRIDGES=0
 
-if [ -f "$BRIDGES_CONF" ]; then
-    # Chercher des lignes Bridge qui ne sont pas des placeholders
-    if grep -qE "^Bridge obfs4 [0-9]" "$BRIDGES_CONF" 2>/dev/null; then
-        HAS_VALID_BRIDGES=1
+    if [ -f "$BRIDGES_CONF" ]; then
+        # Chercher des lignes Bridge qui ne sont pas des placeholders
+        if grep -qE "^Bridge obfs4 [0-9]" "$BRIDGES_CONF" 2>/dev/null; then
+            HAS_VALID_BRIDGES=1
+        fi
+        # Si un placeholder subsiste, considérer le fichier invalide
+        # (évite que Tor ne plante au boot avec une ligne partiellement remplie)
+        if grep -qE "REMPLACER" "$BRIDGES_CONF" 2>/dev/null; then
+            HAS_VALID_BRIDGES=0
+        fi
     fi
-fi
 
 if [ "$HAS_VALID_BRIDGES" = "1" ]; then
     # Bridges valides présents → activer UseBridges

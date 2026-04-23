@@ -147,6 +147,9 @@ def get_system_state() -> str:
     if not SETUP_DONE_FILE.exists():
         return "setup"
 
+    if not service_active("gygeslink-tor"):
+        return "error"
+
     if not service_active("gygeslink-iptables-open"):
         return "error"
 

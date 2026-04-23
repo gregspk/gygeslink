@@ -14,13 +14,18 @@ Before=gygeslink-tor.service
 Type=simple
 
 # ── Règles iptables pour le portail ──────────────────────────────────
+# Le script gygeslink-network-setup.sh a déjà ouvert temporairement le
+# port 443 sur usb0 (mode setup). On n'ajoute que les règles manquantes
+# pour éviter les doublons.
+
 # Redirige HTTP (80) → HTTPS (443) sur usb0 :
 # les navigateurs qui tentent http:// atterrissent quand même sur le portail.
-ExecStartPre=/sbin/iptables -t nat -A PREROUTING -i usb0 -p tcp --dport 80 \
-    -j REDIRECT --to-port 443
-# Autorise le trafic du portail sur usb0
-ExecStartPre=/sbin/iptables -A INPUT  -i usb0 -p tcp --dport 443 -j ACCEPT
-ExecStartPre=/sbin/iptables -A OUTPUT -o usb0 -p tcp --sport 443 -j ACCEPT
+ExecStartPre=/bin/sh -c 'iptables -t nat -C PREROUTING -i usb0 -p tcp --dport 80 -j REDIRECT --to-port 443 2>/dev/null || iptables -t nat -A PREROUTING -i usb0 -p tcp --dport 80 -j REDIRECT --to-port 443'
+
+# S'assurer que INPUT/OUTPUT 443 sont ouverts (network-setup.sh les a déjà
+# peut-être ajoutés ; on vérifie d'abord pour éviter le doublon)
+ExecStartPre=/bin/sh -c 'iptables -C INPUT -i usb0 -p tcp --dport 443 -j ACCEPT 2>/dev/null || iptables -A INPUT -i usb0 -p tcp --dport 443 -j ACCEPT'
+ExecStartPre=/bin/sh -c 'iptables -C OUTPUT -o usb0 -p tcp --sport 443 -j ACCEPT 2>/dev/null || iptables -A OUTPUT -o usb0 -p tcp --sport 443 -j ACCEPT'
 
 # ── Processus principal : portail Flask ──────────────────────────────
 # Flask écoute sur 192.168.100.1:443 (HTTPS, certificat auto-signé).
@@ -29,9 +34,11 @@ ExecStartPre=/sbin/iptables -A OUTPUT -o usb0 -p tcp --sport 443 -j ACCEPT
 ExecStart=/usr/bin/python3 /usr/local/bin/gygeslink-setup-portal.py
 
 # ── Nettoyage à l'arrêt ───────────────────────────────────────────────
-ExecStopPost=/bin/sh -c '/sbin/iptables -t nat -D PREROUTING -i usb0 -p tcp --dport 80 -j REDIRECT --to-port 443 2>/dev/null || true'
-ExecStopPost=/bin/sh -c '/sbin/iptables -D INPUT  -i usb0 -p tcp --dport 443 -j ACCEPT 2>/dev/null || true'
-ExecStopPost=/bin/sh -c '/sbin/iptables -D OUTPUT -o usb0 -p tcp --sport 443 -j ACCEPT 2>/dev/null || true'
+# Supprimer toutes les règles de portail (même celles ajoutées par
+# network-setup.sh) pour éviter toute fuite persistante.
+ExecStopPost=/bin/sh -c 'while iptables -t nat -C PREROUTING -i usb0 -p tcp --dport 80 -j REDIRECT --to-port 443 2>/dev/null; do iptables -t nat -D PREROUTING -i usb0 -p tcp --dport 80 -j REDIRECT --to-port 443; done'
+ExecStopPost=/bin/sh -c 'while iptables -C INPUT -i usb0 -p tcp --dport 443 -j ACCEPT 2>/dev/null; do iptables -D INPUT -i usb0 -p tcp --dport 443 -j ACCEPT; done'
+ExecStopPost=/bin/sh -c 'while iptables -C OUTPUT -o usb0 -p tcp --sport 443 -j ACCEPT 2>/dev/null; do iptables -D OUTPUT -o usb0 -p tcp --sport 443 -j ACCEPT; done'
 
 User=root
 

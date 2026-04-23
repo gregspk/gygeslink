@@ -39,7 +39,10 @@ COMMIT
 # MSS Clamping : ajuste la taille maximale des segments TCP
 # Nécessaire car Tor + obfs4 (+ WireGuard en Tier 2) ajoutent des en-têtes
 # qui réduisent le MTU effectif. Sans ce réglage : timeouts silencieux.
+# Appliqué en FORWARD (trafic transitant pour le PC) ET en OUTPUT
+# (trafic généré localement par Tor/obfs4proxy) pour couvrir tous les cas.
 -A FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
+-A OUTPUT  -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
 
 COMMIT
 

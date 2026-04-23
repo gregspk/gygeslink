@@ -50,10 +50,17 @@ WG_CONF_FILE     = DATA_DIR / "wg0.conf"
 WG_EXPIRY_FILE   = DATA_DIR / "wg-expiry.txt"
 WIFI_CONF_FILE   = DATA_DIR / "wifi.conf"
 
-# NOTE : vérifier l'endpoint exact dans la documentation Mullvad au moment
-# de l'implémentation. L'API Mullvad peut évoluer.
-# Documentation : https://api.mullvad.net/auth/v1/
-MULLVAD_API_WG   = "https://api.mullvad.net/wg/"
+# NOTE : endpoint à vérifier avec la documentation officielle Mullvad.
+# L'API publique Mullvad a évolué. Les endpoints possibles incluent :
+#   https://api.mullvad.net/wg/          (ancien, peut être obsolète)
+#   https://api.mullvad.net/app/v1/      (v1 API app)
+#   https://api.mullvad.net/accounts/v1/ (accounts API)
+# Voir : https://mullvad.net/en/help/api/ (ou /fr/help/api/)
+# Pour le setup Tier 2 sur le Orange Pi, il faut confirmer l'endpoint exact
+# et le format d'authentification (Bearer token, account number, etc.)
+# avant déploiement en production.
+MULLVAD_API_BASE = "https://api.mullvad.net"
+MULLVAD_API_WG   = f"{MULLVAD_API_BASE}/wg/"
 
 # Format attendu : exactement 16 chiffres
 ACCOUNT_PATTERN  = re.compile(r"^\d{16}$")
@@ -376,25 +383,46 @@ def register_wireguard_key(account: str, public_key: str) -> dict:
     Enregistre la clé publique WireGuard auprès de Mullvad.
     Retourne les informations de configuration du serveur.
 
-    NOTE : vérifier l'endpoint exact dans la documentation Mullvad.
-    L'API peut évoluer. Documentation : https://mullvad.net/fr/help/api/
+    NOTE : l'endpoint Mullvad doit être vérifié avant le premier déploiement.
+    Si l'API retourne une erreur inattendue, consulter :
+      https://mullvad.net/en/help/api/
     """
-    response = requests.post(
-        MULLVAD_API_WG,
-        data={
-            "account": account,
-            "pubkey": public_key,
-        },
-        timeout=30,
-        verify=True,   # Toujours vérifier le certificat TLS de Mullvad
-    )
+    # Format attendu pour Mullvad : account number (16 chiffres) utilisé
+    # comme identifiant. Certains endpoints nécessitent un header
+    # Authorization: Token <account_number> au lieu d'un POST form-data.
+    # Le code ci-dessous est paramétrable : si l'endpoint évolue,
+    # modifier MULLVAD_API_WG et la structure de la requête.
+    try:
+        response = requests.post(
+            MULLVAD_API_WG,
+            data={
+                "account": account,
+                "pubkey": public_key,
+            },
+            timeout=30,
+            verify=True,
+        )
+    except requests.exceptions.SSLError as e:
+        raise RuntimeError(f"Erreur TLS API Mullvad : {e}")
+    except requests.exceptions.ConnectionError as e:
+        raise RuntimeError(f"Impossible de joindre l'API Mullvad ({MULLVAD_API_WG}) : {e}")
 
     if response.status_code == 400:
         raise ValueError("Compte Mullvad invalide ou expiré.")
+    if response.status_code == 401:
+        raise ValueError("Authentification API Mullvad refusée.")
     if response.status_code == 429:
         raise ValueError("Trop de clés enregistrées. Supprimez des appareils sur votre compte Mullvad.")
+    if response.status_code == 404:
+        # L'endpoint n'existe probablement plus — nécessite une mise à jour
+        raise RuntimeError(
+            f"Endpoint API introuvable (404) : {MULLVAD_API_WG}. "
+            "L'API Mullvad a peut-être changé. Vérifier la documentation officielle."
+        )
     if response.status_code != 200:
-        raise ValueError(f"Erreur API Mullvad (HTTP {response.status_code}).")
+        raise RuntimeError(
+            f"Erreur API Mullvad (HTTP {response.status_code}) : {response.text[:200]}"
+        )
 
     return response.json()
 

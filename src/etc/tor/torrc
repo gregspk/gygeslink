@@ -93,8 +93,13 @@ ClientTransportPlugin obfs4 exec /usr/bin/obfs4proxy
 #
 # IMPORTANT : ce fichier doit exister au premier boot.
 # Il est créé par gygeslink-setup-portal.py OU manuellement.
-# S'il est absent, Tor refusera de démarrer (UseBridges 1 sans bridge).
+# S'il est absent ou ne contient que des placeholders,
+# le script gygeslink-tor-prestart.sh désactive UseBridges :
+# Tor démarrera sans obfuscation obfs4 (toujours anonyme, moins discret).
 #
+# REMARQUE : contrairement à ce qui était indiqué précédemment,
+# Tor refuse de démarrer seulement si UseBridges=1 et qu'aucune ligne
+# 'Bridge' n'est présente. Le prestart script gère cela dynamiquement.
 %include /data/gygeslink/bridges.conf
 
 # ── OutboundBindInterface (géré dynamiquement) ────────────────────────

@@ -35,6 +35,10 @@ ExecStart=/usr/bin/tor -f /etc/tor/torrc
 # PIDFile : indique à systemd où Tor écrit son PID (pour le suivi)
 PIDFile=/run/tor/tor.pid
 
+# Créer automatiquement /run/tor avant démarrage (évite l'échec si le
+# répertoire n'existe pas encore, ex: premier boot ou overlayfs).
+RuntimeDirectory=tor
+
 # Timeout généreux : les bridges obfs4 peuvent prendre du temps à répondre
 # (surtout si le FAI pratique un DPI agressif).
 # 90s était trop court (piège connu) → 180s

@@ -33,6 +33,7 @@ sysctl -w net.ipv4.ip_forward=1 > /dev/null
 # mais désactiver IPv6 au niveau kernel est plus sûr.
 sysctl -w net.ipv6.conf.all.disable_ipv6=1 > /dev/null
 sysctl -w net.ipv6.conf.default.disable_ipv6=1 > /dev/null
+sysctl -w net.ipv6.conf.lo.disable_ipv6=1 > /dev/null
 
 LOG "usb0 configuré : 192.168.100.1/24"
 
@@ -61,6 +62,22 @@ if ! ip6tables-restore < /etc/gygeslink/ip6tables-drop.rules; then
 fi
 
 LOG "Règles fail-close actives — tout trafic bloqué sauf DHCP et loopback."
+
+# ─────────────────────────────────────────────────────────────────────
+# ÉTAPE 2b : Mode setup — ouverture temporaire du portail
+# Si le boîtier n'a pas encore été configuré (setup-done absent),
+# le portail Flask doit être accessible depuis le PC via usb0 (HTTPS).
+# Les règles DROP du step 2 bloquent tout ; on ajoute temporairement
+# une exception pour le portail (tcp/443 sur usb0 uniquement).
+# Ces règles sont retirées automatiquement par gygeslink-setup.service
+# à l'arrêt du portail (ou au prochain reboot).
+# ─────────────────────────────────────────────────────────────────────
+if [ ! -f /data/gygeslink/setup-done ]; then
+    LOG "Mode setup détecté : ouverture temporaire du portail HTTPS sur usb0."
+    iptables -I INPUT -i usb0 -p tcp --dport 443 -j ACCEPT
+    iptables -I OUTPUT -o usb0 -p tcp --sport 443 -j ACCEPT
+    LOG "Portail temporairement accessible sur https://192.168.100.1:443"
+fi
 
 # ─────────────────────────────────────────────────────────────────────
 # ÉTAPE 3 : Charger la configuration réseau personnalisée (si présente)
@@ -111,8 +128,8 @@ WIFI_CONF="/data/gygeslink/wifi.conf"
 if [ ! -f "$WIFI_CONF" ]; then
     ERR "Aucune config WiFi ($WIFI_CONF) — setup requis."
     ERR "Le boîtier sera en fail-close jusqu'au setup."
-    # On ne sort pas en erreur : le service setup prendra le relais
-    exit 0
+    # Echec explicite : le service setup prendra le relais, Tor ne démarrera pas
+    exit 1
 fi
 
 LOG "Connexion WiFi (wpa_supplicant)..."
@@ -121,7 +138,7 @@ LOG "Connexion WiFi (wpa_supplicant)..."
 # -B = background, -i = interface, -c = config, -P = PID file
 if ! wpa_supplicant -B -i wlan0 -c "$WIFI_CONF" -P /run/wpa_supplicant-wlan0.pid 2>/dev/null; then
     ERR "wpa_supplicant a échoué — vérifier $WIFI_CONF."
-    exit 0
+    exit 1
 fi
 
 # Attendre l'association WiFi (max WIFI_TIMEOUT secondes, défaut 20s)
@@ -137,7 +154,7 @@ done
 
 if [ $WAITED -ge "${WIFI_TIMEOUT:-20}" ]; then
     ERR "Association WiFi timeout (${WIFI_TIMEOUT:-20}s) — SSID joignable ?"
-    exit 0
+    exit 1
 fi
 
 # Obtenir une IP via DHCP sur wlan0
@@ -148,7 +165,14 @@ if timeout "${DHCP_TIMEOUT:-30}" dhclient -v wlan0 2>/dev/null; then
     LOG "wlan0 configuré : $WLAN0_IP"
 else
     ERR "DHCP wlan0 timeout — routeur joignable ?"
+    exit 1
 fi
+
+# Empêcher dhclient d'avoir écrasé /etc/resolv.conf avec les DNS du FAI.
+# Le boîtier ne résout JAMAIS via le FAI : Tor fait sa propre résolution.
+# Si resolv.conf contient les DNS du FAI, c'est un metadata leak visible.
+echo "nameserver 127.0.0.1" > /etc/resolv.conf
+LOG "DNS local restauré (127.0.0.1) — pas de fuite vers le FAI."
 
 LOG "Configuration réseau terminée."
 LOG "État : fail-close actif, Tor pas encore démarré."
