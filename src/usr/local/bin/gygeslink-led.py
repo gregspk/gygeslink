@@ -10,10 +10,10 @@ Câblage GPIO (Orange Pi Zero 2W — à confirmer avec le pinout physique) :
     gpiodetect           # lister les chips disponibles
     gpioinfo gpiochip0   # lister toutes les lignes du chip
 
-  GPIO_R → résistance 330Ω → broche Rouge de la LED RGB
-  GPIO_G → résistance 330Ω → broche Vert
-  GPIO_B → résistance 330Ω → broche Bleu
-  GND    → cathode commune
+  GPIO_R → Pin 11 (GPIO_X_0, ligne 12) + résistance 330Ω
+  GPIO_G → Pin 13 (GPIO_X_2, ligne 13) + résistance 330Ω
+  GPIO_B → Pin 15 (GPIO_X_4, ligne 14) + résistance 330Ω
+  GND    → cathode commune (Pin 6, 9, 14, 20, 25)
 
 États :
   Bleu clignotant rapide  (0.3s ON / 0.3s OFF)  → Mode setup (premier boot)
@@ -46,11 +46,16 @@ except ImportError:
 # ─────────────────────────────────────────────────────────────────────
 # Configuration GPIO (Orange Pi Zero 2W — Allwinner H618)
 # ─────────────────────────────────────────────────────────────────────
-# TODO: ajuster ces valeurs après vérification avec `gpioinfo` sur le boîtier
-GPIOCHIP = "gpiochip0"  # TODO: vérifier le bon chip (gpiodetect)
-GPIO_R   = 71           # TODO: à ajuster selon pinout réel
-GPIO_G   = 72           # TODO: à ajuster selon pinout réel
-GPIO_B   = 73           # TODO: à ajuster selon pinout réel
+# Orange Pi Zero 2W (Allwinner H618) — gpiochip1 = 288 lignes
+# Pinout GPIO physique : broches du header 26-pin
+#   Pin 11 (GPIO_X_0) = ligne 12  → LED Rouge
+#   Pin 13 (GPIO_X_2) = ligne 13  → LED Vert
+#   Pin 15 (GPIO_X_4) = ligne 14  → LED Bleu
+#   Pin  7 (GPIO_X_6) = ligne 15  → Bouton
+GPIOCHIP = "gpiochip1"
+GPIO_R   = 12
+GPIO_G   = 13
+GPIO_B   = 14
 
 SETUP_DONE_FILE  = Path("/data/gygeslink/setup-done")
 WG_CONF_FILE     = Path("/data/gygeslink/wg0.conf")

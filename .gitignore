@@ -2,6 +2,7 @@
 .claude/
 CLAUDE.md
 CORRECTIONS_PLAN.md
+MEMORY.md
 .gitattributes
 docs/
 corrections-*.txt

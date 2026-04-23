@@ -8,7 +8,7 @@ Câblage :
     gpiodetect           # lister les chips disponibles
     gpioinfo gpiochip0   # lister toutes les lignes
 
-  Bouton connecté entre le pin GPIO et GND (pull-up interne activé par software).
+  Bouton connecté entre le pin GPIO (Pin 7, ligne 15) et GND.
   HIGH = bouton relâché, LOW = bouton pressé.
 
 Comportement :
@@ -37,9 +37,11 @@ except ImportError:
 # ─────────────────────────────────────────────────────────────────────
 # Configuration GPIO (Orange Pi Zero 2W — Allwinner H618)
 # ─────────────────────────────────────────────────────────────────────
-# TODO: ajuster après vérification avec `gpioinfo` sur le boîtier
-GPIOCHIP    = "gpiochip0"  # TODO: vérifier le bon chip (gpiodetect)
-BUTTON_LINE = 78           # TODO: à ajuster selon pinout réel
+# Orange Pi Zero 2W (Allwinner H618) — gpiochip1 = 288 lignes
+# Pinout GPIO physique : broches du header 26-pin
+#   Pin  7 (GPIO_X_6) = ligne 15  → Bouton
+GPIOCHIP    = "gpiochip1"
+BUTTON_LINE = 15
 
 HOLD_DURATION   = 5.0   # secondes de maintien pour déclencher le reset
 POLL_INTERVAL   = 0.1   # intervalle de polling (100ms)
