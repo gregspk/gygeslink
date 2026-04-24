@@ -22,6 +22,13 @@
 -A INPUT -i wlan0 -p udp --sport 67 --dport 68 -j ACCEPT
 -A OUTPUT -o wlan0 -p udp --sport 68 --dport 67 -j ACCEPT
 
+# DNS sortant (nécessaire avant que Tor ne soit actif)
+# Sans cette règle, git pull, apt, etc. échouent en fail-close car
+# resolv.conf pointe vers 127.0.0.1 (Tor DNS) qui n'écoute pas encore.
+# RETIRER EN PRODUCTION : Tor gère le DNS une fois actif.
+-A OUTPUT -o wlan0 -p udp --dport 53 -j ACCEPT
+-A INPUT -i wlan0 -p udp --sport 53 -j ACCEPT
+
 # NTP sortant du boîtier (si DS3231 indisponible au premier boot)
 -A OUTPUT -o wlan0 -p udp --dport 123 -j ACCEPT
 

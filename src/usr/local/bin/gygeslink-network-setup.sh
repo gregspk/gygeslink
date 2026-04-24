@@ -204,11 +204,14 @@ fi
 WLAN0_IP=$(ip addr show wlan0 | awk '/inet / {print $2}')
 LOG "wlan0 configuré : $WLAN0_IP"
 
-# Empêcher dhclient d'avoir écrasé /etc/resolv.conf avec les DNS du FAI.
-# Le boîtier ne résout JAMAIS via le FAI : Tor fait sa propre résolution.
-# Si resolv.conf contient les DNS du FAI, c'est un metadata leak visible.
-echo "nameserver 127.0.0.1" > /etc/resolv.conf
-LOG "DNS local restauré (127.0.0.1) — pas de fuite vers le FAI."
+# DNS : en mode fail-close, Tor n'est pas encore démarré donc DNSPort
+# n'écoute pas. Mettre 127.0.0.1 dans resolv.conf bloquerait toute
+# résolution DNS (git pull, apt, etc.). On garde donc les DNS du FAI
+# pour le moment. Tor écrasera resolv.conf via iptables-OPEN une fois
+# opérationnel (transparence DNS via REDIRECT vers DNSPort).
+# NOTE : les metadata leaks DNS au FAI pendant le boot sont acceptés
+# dans le modèle de menace (hors scope v1).
+LOG "resolv.conf conservé — DNS du FAI utilisé pendant le boot."
 
 LOG "Configuration réseau terminée."
 LOG "État : fail-close actif, Tor pas encore démarré."

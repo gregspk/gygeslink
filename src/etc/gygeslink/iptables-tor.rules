@@ -92,6 +92,11 @@ COMMIT
 -A INPUT -i wlan0 -p tcp --dport 22 -j ACCEPT
 -A OUTPUT -o wlan0 -p tcp --sport 22 -j ACCEPT
 
+# DNS sortant (debug uniquement — RETIRER EN PRODUCTION)
+# Nécessaire si Tor plante et qu'on doit debug (apt, git, etc.)
+-A OUTPUT -o wlan0 -p udp --dport 53 -j ACCEPT
+-A INPUT -i wlan0 -p udp --sport 53 -j ACCEPT
+
 # TransPort Tor : accepter le trafic TCP redirigé depuis usb0
 # (après PREROUTING REDIRECT, les paquets arrivent sur ce port)
 -A INPUT -i usb0 -p tcp --dport 9040 -j ACCEPT
