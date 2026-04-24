@@ -32,6 +32,10 @@
 # NTP sortant du boîtier (si DS3231 indisponible au premier boot)
 -A OUTPUT -o wlan0 -p udp --dport 123 -j ACCEPT
 
+# Tor daemon → relais/bridges (nécessaire pour le bootstrap AVANT iptables-open)
+# Sans cette règle, Tor ne peut pas bootstrap en fail-close et time out.
+-A OUTPUT -m owner --uid-owner debian-tor -j ACCEPT
+
 # WireGuard → endpoint Mullvad (Tier 2)
 # Nécessaire dès la phase de boot pour que wg-quick up puisse compléter
 # le handshake avant le démarrage de Tor.
