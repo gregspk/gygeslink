@@ -90,8 +90,12 @@ LOG "usb0 configuré : $USB0_ADDR"
 # service finisse, et ce service attend que dnsmasq redémarre = deadlock.
 # On lance dnsmasq directement en arrière-plan à la place.
 if [ -f /etc/dnsmasq.d/gygeslink-usb0.conf ]; then
+    # Tuer toute instance existante de dnsmasq avant de lancer la nôtre
+    # (sinon "address already in use" sur le port 53/67)
+    killall dnsmasq 2>/dev/null || true
+    sleep 1
     dnsmasq -u dnsmasq --conf-file=/etc/dnsmasq.conf 2>/dev/null || true
-    LOG "dnsmasq lancé en arrière-plan — DHCP actif sur usb0."
+    LOG "dnsmasq lancé — DHCP actif sur usb0."
 else
     LOG "ATTENTION : /etc/dnsmasq.d/gygeslink-usb0.conf absent — DHCP non configuré."
 fi
