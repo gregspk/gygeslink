@@ -10,6 +10,7 @@ Wants=gygeslink-timesync.service
 
 # usb0 doit exister avant ce service (créée par le gadget RNDIS)
 After=gygeslink-usb-gadget.service
+Requires=gygeslink-usb-gadget.service
 
 # Déclarer que ce service remplace network-online.target pour la suite
 Before=network-online.target
@@ -22,6 +23,7 @@ Type=oneshot
 RemainAfterExit=yes
 
 # Le script fait :
+#   0. Désactiver NetworkManager sur wlan0/usb0
 #   1. Configurer usb0 (192.168.100.1/24) — USB gadget côté PC
 #   2. Appliquer iptables DROP atomiquement (fail-close immédiat)
 #   3. Charger /data/gygeslink/network.conf si présent

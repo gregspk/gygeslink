@@ -75,6 +75,7 @@ COMMIT
 -A OUTPUT -o usb0 -p udp --sport 67 -j ACCEPT
 
 # DHCP client → routeur FAI (renouvellement de bail wlan0)
+-A INPUT -i wlan0 -p udp --sport 67 --dport 68 -j ACCEPT
 -A OUTPUT -o wlan0 -p udp --sport 68 --dport 67 -j ACCEPT
 
 # NTP sortant (si DS3231 indisponible) — aligné sur iptables-drop.rules
@@ -86,6 +87,10 @@ COMMIT
 
 # Tor daemon → bridges/relays (wlan0 en Tier 1, wg0 en Tier 2)
 -A OUTPUT -m owner --uid-owner debian-tor -j ACCEPT
+
+# SSH entrant sur wlan0 (debug uniquement — RETIRER EN PRODUCTION)
+-A INPUT -i wlan0 -p tcp --dport 22 -j ACCEPT
+-A OUTPUT -o wlan0 -p tcp --sport 22 -j ACCEPT
 
 # TransPort Tor : accepter le trafic TCP redirigé depuis usb0
 # (après PREROUTING REDIRECT, les paquets arrivent sur ce port)

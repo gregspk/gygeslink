@@ -1,17 +1,16 @@
 #!/bin/bash
-# GygesLink — USB Gadget RNDIS via configfs
-# Orange Pi Zero 2W (Allwinner H618) — port USB-C OTG
+# GygesLink — USB Gadget Ethernet (RNDIS via configfs)
+# Compatible Windows 10/11 (driver RNDIS natif + OS descriptors Microsoft)
+# Orange Pi Zero 2W — port USB-C OTG
 #
-# Ce script crée un gadget USB composite configuré comme périphérique
-# RNDIS (Remote NDIS), visible par le PC comme une carte réseau USB.
+# Prérequis (modules-load.d/gygeslink.conf) :
+#   dwc2, libcomposite, usb_f_rndis
 #
-# PRÉREQUIS (chargés par modules-load.d) :
-#   dwc2          : contrôleur USB OTG Allwinner
-#   libcomposite  : framework configfs
-#   usb_f_rndis   : fonction RNDIS
+# Ce script crée un gadget RNDIS via configfs. L'interface usb0
+# apparaît côté Pi et le PC voit une carte réseau USB "Remote NDIS".
 #
-# Ce script est appelé par gygeslink-usb-gadget.service AVANT
-# gygeslink-network-setup.service.
+# NE PAS utiliser g_ether (obsolète sur Armbian 26.x).
+# Ce script est appelé par gygeslink-usb-gadget.service.
 
 set -uo pipefail
 
@@ -21,114 +20,108 @@ UDC=$(ls /sys/class/udc/ 2>/dev/null | head -1)
 LOG() { echo "[usb-gadget] $*"; }
 ERR() { echo "[usb-gadget] ERREUR: $*" >&2; }
 
-# ─────────────────────────────────────────────────────────────────────
-# ÉTAPE 1 : Nettoyage propre si ancien gadget existe
-# Référence : https://github.com/adam-burns/devuan-pi-gadgeteer
-# Ordre inverse strict pour éviter EBUSY (configfs n'autorise pas rm -rf)
-# ─────────────────────────────────────────────────────────────────────
-if [ -d "$GADGET_DIR" ]; then
-    LOG "Ancien gadget trouvé, nettoyage..."
-    # 1. Désactiver le gadget
-    echo "" > "$GADGET_DIR/UDC" 2>/dev/null || true
-    sleep 0.5
-    # 2. Retirer les liens symlinks config -> function
-    for lnk in "$GADGET_DIR"/configs/c.1/*; do
-        [ -L "$lnk" ] && rm -f "$lnk"
-    done 2>/dev/null || true
-    # 3. Retirer le lien os_desc -> config
-    rm -f "$GADGET_DIR/os_desc/c.1" 2>/dev/null || true
-    # 4. Retirer les répertoires configs et functions
-    rm -rf "$GADGET_DIR/configs" 2>/dev/null || true
-    rm -rf "$GADGET_DIR/functions" 2>/dev/null || true
-    # 5. Retirer strings et os_desc
-    rm -rf "$GADGET_DIR/strings" 2>/dev/null || true
-    rm -rf "$GADGET_DIR/os_desc" 2>/dev/null || true
-    # 6. Enfin retirer le gadget
-    rmdir "$GADGET_DIR" 2>/dev/null || true
+# ── Attendre que configfs soit monté ──────────────────────────────
+if [ ! -d /sys/kernel/config/usb_gadget ]; then
+    ERR "configfs non monté — /sys/kernel/config/usb_gadget/ absent."
+    ERR "Vérifier que libcomposite est chargé et configfs monté."
+    exit 1
 fi
 
-# ─────────────────────────────────────────────────────────────────────
-# ÉTAPE 2 : Création du gadget
-# ─────────────────────────────────────────────────────────────────────
-LOG "Création du gadget RNDIS..."
+# ── Nettoyage si ancien gadget existe ─────────────────────────────
+# configfs ne supporte PAS rm -rf : il faut démonter dans l'ordre inverse.
+if [ -d "$GADGET_DIR" ]; then
+    LOG "Nettoyage de l'ancien gadget..."
+    # Détacher l'UDC en premier (coupe la connexion USB)
+    echo "" > "$GADGET_DIR/UDC" 2>/dev/null || true
+    # Retirer les liens symboliques (fonctions → configs)
+    for link in "$GADGET_DIR"/configs/c.1/*; do
+        [ -L "$link" ] && rm "$link" 2>/dev/null || true
+    done
+    # Retirer le lien os_desc → config
+    rm "$GADGET_DIR/os_desc/c.1" 2>/dev/null || true
+    # Supprimer les sous-répertoires (fonctions, configs, strings, os_desc)
+    for dir in functions rndis.usb0 configs/c.1/strings/0x409 \
+               configs/c.1 strings/0x409 os_desc; do
+        rm -rf "$GADGET_DIR/$dir" 2>/dev/null || true
+    done
+    # Supprimer le gadget lui-même
+    rmdir "$GADGET_DIR" 2>/dev/null || true
+    LOG "Ancien gadget nettoyé."
+fi
 
-mkdir -p "$GADGET_DIR" || { ERR "Impossible de créer $GADGET_DIR"; exit 1; }
-cd "$GADGET_DIR" || { ERR "Impossible de cd $GADGET_DIR"; exit 1; }
+# ── Créer le gadget ───────────────────────────────────────────────
+mkdir -p "$GADGET_DIR"
+cd "$GADGET_DIR" || { ERR "Échec cd $GADGET_DIR"; exit 1; }
 
-# Identifiants USB — VID/PID Linux RNDIS (reconnus par Windows)
-echo 0x0525 > idVendor
-echo 0xa4a2 > idProduct
+# ── IDs USB : RNDIS Gadget Windows-compatible ────────────────────
+# vendor  0x0525 = Linux Foundation
+# product 0xa4a2 = Linux USB Ethernet/RNDIS Gadget
+# bDeviceClass 0xEF = Miscellaneous (composite device)
+# bDeviceSubClass 0x02 = Common Class
+# bDeviceProtocol 0x01 = Interface Association Descriptor
+# Ces valeurs sont CRITIQUES pour que Windows reconnaisse le RNDIS
+# sans driver additionnel.
+echo 0x0525     > idVendor
+echo 0xa4a2     > idProduct
+echo 0x0100     > bcdDevice
+echo 0x0200     > bcdUSB
+echo 0xEF       > bDeviceClass
+echo 0x02       > bDeviceSubClass
+echo 0x01       > bDeviceProtocol
 
-# Version du device et USB
-echo 0x0100 > bcdDevice
-echo 0x0200 > bcdUSB
-
-# Composite device class — requis pour que Windows reconnaisse un
-# périphérique multifonction (RNDIS + autres potentiels)
-echo 0xEF > bDeviceClass
-echo 0x02 > bDeviceSubClass
-echo 0x01 > bDeviceProtocol
-
-# ─────────────────────────────────────────────────────────────────────
-# ÉTAPE 3 : Strings USB (descripteurs texte)
-# ─────────────────────────────────────────────────────────────────────
 mkdir -p strings/0x409
 echo "123456789abcdef" > strings/0x409/serialnumber
-echo "GygesLink" > strings/0x409/manufacturer
-echo "RNDIS Ethernet" > strings/0x409/product
+echo "GygesLink"       > strings/0x409/manufacturer
+echo "USB Ethernet"     > strings/0x409/product
 
-# ─────────────────────────────────────────────────────────────────────
-# ÉTAPE 4 : Configuration
-# ─────────────────────────────────────────────────────────────────────
+# ── Configuration ────────────────────────────────────────────────
 mkdir -p configs/c.1
 mkdir -p configs/c.1/strings/0x409
-echo "RNDIS Config" > configs/c.1/strings/0x409/configuration
-echo 250 > configs/c.1/MaxPower
+echo "RNDIS"      > configs/c.1/strings/0x409/configuration
+echo 250          > configs/c.1/MaxPower
 
-# ─────────────────────────────────────────────────────────────────────
-# ÉTAPE 5 : Fonction RNDIS
-# ─────────────────────────────────────────────────────────────────────
+# ── Fonction RNDIS ───────────────────────────────────────────────
 mkdir -p functions/rndis.usb0
-
-# MAC addresses (côté Pi = dev_addr, côté PC = host_addr)
 echo "ea:11:22:33:44:55" > functions/rndis.usb0/dev_addr
 echo "02:11:22:33:44:66" > functions/rndis.usb0/host_addr
 
-# Lier la fonction à la configuration
-ln -sf "$GADGET_DIR/functions/rndis.usb0" "$GADGET_DIR/configs/c.1/"
-
-# ─────────────────────────────────────────────────────────────────────
-# ÉTAPE 6 : OS Descriptors Microsoft (compatibilité Windows)
-# Référence : P4wnP1 / devuan-pi-gadgeteer
-# Windows refuse de charger RNDIS sans ces descriptors.
-# ─────────────────────────────────────────────────────────────────────
+# ── OS Descriptors Microsoft (RNDIS automatique sur Windows 10/11)
+# Sans ces descripteurs, Windows peut ne pas charger le driver RNDIS
+# et afficher "Périphérique USB inconnu" dans le gestionnaire.
 mkdir -p os_desc
 echo 1       > os_desc/use
 echo 0xcd    > os_desc/b_vendor_code
 echo "MSFT100" > os_desc/qw_sign
 
-# OS descriptors au niveau interface RNDIS (obligatoire pour Windows)
+# Descripteur d'interface RNDIS pour Microsoft
 mkdir -p functions/rndis.usb0/os_desc/interface.rndis
-echo "RNDIS"   > functions/rndis.usb0/os_desc/interface.rndis/compatible_id
-echo "5162001" > functions/rndis.usb0/os_desc/interface.rndis/sub_compatible_id
+echo "RNDIS" > functions/rndis.usb0/os_desc/interface.rndis/compat_id
 
-# Associer la configuration à os_desc : os_desc/c.1 -> configs/c.1
-# Cela indique à Windows que la config c.1 est la "default" pour les OS descriptors.
-ln -sf "$GADGET_DIR/configs/c.1" "$GADGET_DIR/os_desc/c.1"
+# Lier la config aux OS descriptors
+ln -sf "$GADGET_DIR/configs/c.1" "$GADGET_DIR/os_desc/"
 
-# ─────────────────────────────────────────────────────────────────────
-# ÉTAPE 7 : Activation (bind UDC)
-# ─────────────────────────────────────────────────────────────────────
-if [ -z "$UDC" ]; then
-    ERR "Aucun UDC disponible. dwc2 activé ? Câble branché ?"
+# Lier la fonction RNDIS à la config
+ln -sf "$GADGET_DIR/functions/rndis.usb0" "$GADGET_DIR/configs/c.1/"
+
+# ── Activer le gadget sur l'UDC ──────────────────────────────────
+sleep 1
+
+if [ -n "$UDC" ]; then
+    echo "$UDC" > UDC
+    LOG "Gadget RNDIS activé sur $UDC"
+else
+    ERR "Aucun UDC trouvé — le câble USB-C est-il branché ?"
+    ERR "Contrôleur USB OTG (dwc2) non détecté."
     exit 1
 fi
 
-echo "$UDC" > UDC || { ERR "Échec de l'activation sur $UDC"; exit 1; }
-
-LOG "Gadget RNDIS actif sur UDC=$UDC"
+# Attendre que l'interface usb0 apparaisse
 sleep 2
 
-LOG "usb0 devrait apparaître dans les prochaines secondes."
-
-exit 0
+if ip link show usb0 > /dev/null 2>&1; then
+    LOG "Interface usb0 détectée — gadget prêt."
+else
+    ERR "Interface usb0 non détectée après activation du gadget."
+    ERR "Vérifier les modules dwc2 + usb_f_rndis."
+    exit 1
+fi

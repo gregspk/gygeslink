@@ -60,30 +60,20 @@ VirtualAddrNetworkIPv4 10.192.0.0/10
 
 # ── Bridges obfs4 — obfuscation du trafic Tor ────────────────────────
 #
-# POURQUOI LES BRIDGES ?
-# Sans bridge, le trafic Tor est reconnaissable par DPI (Deep Packet
-# Inspection) même s'il est chiffré. Un FAI ou un gouvernement peut
-# détecter la signature Tor et bloquer la connexion.
-# obfs4 transforme le trafic Tor en trafic aléatoire indistinguable.
+# Ces directives sont gérées DYNAMIQUEMENT par gygeslink-tor-prestart.sh.
+# Par défaut (aucune bridge configurée) : UseBridges 0, pas de
+# ClientTransportPlugin. Tor démarrera en mode direct.
 #
-# COMMENT OBTENIR DES BRIDGES ?
-# Méthode 1 (navigateur) : https://bridges.torproject.org
-#   → choisir "obfs4" → copier les 3 lignes "Bridge obfs4 ..."
-# Méthode 2 (email) : envoyer "get transport obfs4" à bridges@torproject.org
-# Méthode 3 (Tor Browser) : Paramètres → Bridges → Obtenir un bridge
+# Si des bridges sont présentes dans /data/gygeslink/bridges.conf,
+# le prestart activera automatiquement UseBridges 1 et configurera
+# obfs4proxy.
 #
-# REMARQUE SUR iat-mode :
-#   iat-mode=0 : pas d'obfuscation de timing (rapide, recommandé)
-#   iat-mode=1 : obfuscation du timing inter-paquets (plus lent mais
-#                résiste mieux aux analyses de timing)
-#   Utiliser iat-mode=0 sauf si le FAI pratique une analyse de timing.
-#
-UseBridges 1
-ClientTransportPlugin obfs4 exec /usr/bin/obfs4proxy
+# UseBridges 1
+# ClientTransportPlugin obfs4 exec /usr/bin/obfs4proxy
 
 # ── Bridges chargés depuis la partition persistante ───────────────────
 # /data/gygeslink/bridges.conf contient les lignes "Bridge obfs4 ..."
-# Ce fichier est sur la partition /data (ext4, hors overlayfs) :
+# Ce fichier est sur la partition /data (ext4, hors overlayfs).
 # il survit aux reboots, aux mises à jour OS, et au réinitialisation.
 #
 # FORMAT du fichier bridges.conf :

@@ -11,20 +11,29 @@
 -A INPUT -i lo -j ACCEPT
 -A OUTPUT -o lo -j ACCEPT
 
-# DHCP : le PC doit pouvoir obtenir une IP même en fail-close
+# DHCP serveur sur usb0 : le PC doit pouvoir obtenir une IP même en fail-close
 # (sans IP, le PC ne sait même pas qu'il est branché au boîtier)
 -A INPUT -i usb0 -p udp --dport 67 -j ACCEPT
 -A OUTPUT -o usb0 -p udp --sport 67 -j ACCEPT
 
-# NTP sortant du boîtier uniquement (si DS3231 indisponible au premier boot)
--A OUTPUT -o wlan0 -p udp --dport 123 -j ACCEPT
-
-# DHCP client sur wlan0 (pour obtenir une IP du routeur FAI)
+# DHCP client sur wlan0 (pour obtenir/maintenir l'IPv4 du routeur FAI)
+# CRITIQUE : sans ces règles, dhclient ne peut ni obtenir ni renouveler son bail,
+# l'IPv4 wlan0 est perdue et le Pi devient injoignable en SSH.
 -A INPUT -i wlan0 -p udp --sport 67 --dport 68 -j ACCEPT
 -A OUTPUT -o wlan0 -p udp --sport 68 --dport 67 -j ACCEPT
 
+# NTP sortant du boîtier (si DS3231 indisponible au premier boot)
+-A OUTPUT -o wlan0 -p udp --dport 123 -j ACCEPT
+
 # WireGuard → endpoint Mullvad (Tier 2)
+# Nécessaire dès la phase de boot pour que wg-quick up puisse compléter
+# le handshake avant le démarrage de Tor.
 -A OUTPUT -o wlan0 -p udp --dport 51820 -j ACCEPT
+
+# SSH entrant sur wlan0 (debug uniquement — RETIRER EN PRODUCTION)
+# Permet d'administrer le boîtier en SSH via le réseau local.
+-A INPUT -i wlan0 -p tcp --dport 22 -j ACCEPT
+-A OUTPUT -o wlan0 -p tcp --sport 22 -j ACCEPT
 
 COMMIT
 
@@ -38,7 +47,7 @@ COMMIT
 *mangle
 :PREROUTING ACCEPT [0:0]
 :INPUT ACCEPT [0:0]
-:FORWARD ACCEPT [0:0]
+:FORWARD DROP [0:0]
 :OUTPUT ACCEPT [0:0]
 :POSTROUTING ACCEPT [0:0]
 COMMIT

@@ -1,12 +1,13 @@
 #!/bin/bash
 # GygesLink — Script de configuration réseau au boot
-# Exécuté par gygeslink-network.service (Type=oneshot)
+# Exécuté par gygeslink-network-setup.service (Type=oneshot)
 #
 # ORDRE CRITIQUE DE SÉCURITÉ :
-#   1. Configurer usb0 (côté PC — USB gadget RNDIS via configfs)
-#   2. Appliquer iptables DROP immédiatement (fail-close atomique)
-#   3. Randomiser MAC wlan0 (avant toute association WiFi)
-#   4. Se connecter au réseau WiFi via wpa_supplicant + DHCP
+#   1. Désactiver NetworkManager pour éviter les conflits
+#   2. Configurer usb0 (côté PC — USB gadget via configfs/RNDIS)
+#   3. Appliquer iptables DROP immédiatement (fail-close atomique)
+#   4. Randomiser MAC wlan0 (avant toute association WiFi)
+#   5. Se connecter au réseau WiFi via wpa_supplicant + dhclient
 
 set -uo pipefail
 
@@ -14,26 +15,59 @@ LOG() { echo "[gygeslink-network] $*"; }
 ERR() { echo "[gygeslink-network] ERREUR: $*" >&2; }
 
 # ─────────────────────────────────────────────────────────────────────
+# ÉTAPE 0 : Désactiver NetworkManager pour éviter les conflits
+# NetworkManager gère wlan0 et usb0 par défaut sur Armbian.
+# Il entre en conflit avec wpa_supplicant et les ip link/ip addr manuels.
+# ─────────────────────────────────────────────────────────────────────
+LOG "Désactivation de NetworkManager sur wlan0 et usb0..."
+
+# NetworkManager est déjà exclu via conf drop-in, mais on s'assure
+# qu'il n'interfère pas pendant ce script.
+nmcli device set wlan0 managed no 2>/dev/null || true
+nmcli device set usb0 managed no 2>/dev/null || true
+# Tuer wpa_supplicant géré par NetworkManager s'il est en cours
+killall wpa_supplicant 2>/dev/null || true
+
+# ─────────────────────────────────────────────────────────────────────
+# ÉTAPE 0b : Chargement configuration personnalisée
+# (avant usb0 config pour USB0_ADDR potentiel)
+# ─────────────────────────────────────────────────────────────────────
+USB0_ADDR="192.168.100.1/24"
+WIFI_TIMEOUT=20
+DHCP_TIMEOUT=30
+
+if [ -f /data/gygeslink/network.conf ]; then
+    LOG "Chargement de /data/gygeslink/network.conf..."
+    while IFS='=' read -r key val; do
+        [[ "$key" =~ ^[[:space:]]*# ]] && continue
+        [[ -z "${key// /}" ]] && continue
+        key="${key// /}"
+        val="${val// /}"
+        case "$key" in
+            USB0_ADDR)    USB0_ADDR="$val"    ;;
+            WIFI_TIMEOUT) WIFI_TIMEOUT="$val" ;;
+            DHCP_TIMEOUT) DHCP_TIMEOUT="$val" ;;
+        esac
+    done < /data/gygeslink/network.conf
+fi
+
+# ─────────────────────────────────────────────────────────────────────
 # ÉTAPE 1 : Configurer usb0 (interface côté PC)
-# usb0 est créée par le gadget USB configfs (RNDIS) via
-# gygeslink-usb-gadget.service, exécuté AVANT ce service.
-# Si usb0 est absente (boot lente), on attend brièvement.
+# usb0 est créée par gygeslink-usb-gadget.sh via configfs (RNDIS).
+# Le gadget service doit avoir démarré AVANT ce script.
 # ─────────────────────────────────────────────────────────────────────
 LOG "Configuration usb0 (côté PC, USB gadget)..."
 
-if ! ip link show usb0 >/dev/null 2>&1; then
-    LOG "usb0 absente, attente du gadget (2s)..."
-    sleep 2
-fi
-
-if ! ip link show usb0 >/dev/null 2>&1; then
-    ERR "usb0 toujours absente après attente — vérifier gygeslink-usb-gadget.service."
+# Vérifier que usb0 existe
+if ! ip link show usb0 > /dev/null 2>&1; then
+    ERR "Interface usb0 non trouvée — le gadget USB n'est pas prêt."
+    ERR "Vérifier gygeslink-usb-gadget.service et les modules dwc2/usb_f_rndis."
     exit 1
 fi
 
 ip link set usb0 up
 ip addr flush dev usb0 2>/dev/null || true
-ip addr add "${USB0_ADDR:-192.168.100.1/24}" dev usb0
+ip addr add "$USB0_ADDR" dev usb0
 
 # Activer le routage IP (le boîtier doit faire transiter les paquets)
 sysctl -w net.ipv4.ip_forward=1 > /dev/null
@@ -45,21 +79,14 @@ sysctl -w net.ipv6.conf.all.disable_ipv6=1 > /dev/null
 sysctl -w net.ipv6.conf.default.disable_ipv6=1 > /dev/null
 sysctl -w net.ipv6.conf.lo.disable_ipv6=1 > /dev/null
 
-LOG "usb0 configuré : 192.168.100.1/24"
+LOG "usb0 configuré : $USB0_ADDR"
 
 # Relancer dnsmasq pour qu'il prenne en compte usb0 (DHCP côté PC).
 # Le fichier /etc/dnsmasq.d/gygeslink-usb0.conf configure le DHCP
 # sur 192.168.100.100-110/24 pour le PC branché en USB-C.
-# --no-block : ne pas bloquer l'exécution du script si dnsmasq met
-# du temps à redémarrer (peut entrer en conflit avec un autre service
-# tenant le port 53).
-if systemctl is-active --quiet dnsmasq 2>/dev/null; then
-    systemctl restart --no-block dnsmasq
-    LOG "dnsmasq relancé (asynchrone)."
-else
-    systemctl start --no-block dnsmasq
-    LOG "dnsmasq démarré (asynchrone)."
-fi
+# On utilise restart (pas start) car dnsmasq peut déjà tourner.
+systemctl restart dnsmasq 2>/dev/null || true
+LOG "dnsmasq (re)démarré — DHCP actif sur usb0."
 
 # ─────────────────────────────────────────────────────────────────────
 # ÉTAPE 2 : Appliquer les règles iptables DROP (fail-close)
@@ -79,7 +106,7 @@ if ! ip6tables-restore < /etc/gygeslink/ip6tables-drop.rules; then
     exit 1
 fi
 
-LOG "Règles fail-close actives — tout trafic bloqué sauf DHCP et loopback."
+LOG "Règles fail-close actives — tout trafic bloqué sauf DHCP, SSH et loopback."
 
 # ─────────────────────────────────────────────────────────────────────
 # ÉTAPE 2b : Mode setup — ouverture temporaire du portail
@@ -98,28 +125,7 @@ if [ ! -f /data/gygeslink/setup-done ]; then
 fi
 
 # ─────────────────────────────────────────────────────────────────────
-# ÉTAPE 3 : Charger la configuration réseau personnalisée (si présente)
-# ─────────────────────────────────────────────────────────────────────
-if [ -f /data/gygeslink/network.conf ]; then
-    LOG "Chargement de /data/gygeslink/network.conf..."
-    # Parser sans source/eval : seules les variables connues sont acceptées.
-    # source équivaut à eval — toute commande dans le .conf s'exécuterait en root.
-    while IFS='=' read -r key val; do
-        # Ignorer commentaires et lignes vides
-        [[ "$key" =~ ^[[:space:]]*# ]] && continue
-        [[ -z "${key// /}" ]] && continue
-        key="${key// /}"
-        val="${val// /}"
-        case "$key" in
-            USB0_ADDR)    USB0_ADDR="$val"    ;;
-            WIFI_TIMEOUT) WIFI_TIMEOUT="$val" ;;
-            DHCP_TIMEOUT) DHCP_TIMEOUT="$val" ;;
-        esac
-    done < /data/gygeslink/network.conf
-fi
-
-# ─────────────────────────────────────────────────────────────────────
-# ÉTAPE 4 : Randomiser l'adresse MAC de wlan0
+# ÉTAPE 3 : Randomiser l'adresse MAC de wlan0
 # wlan0 est l'interface côté routeur FAI (WiFi client).
 # L'adresse MAC est visible par le routeur et potentiellement loguée.
 # En la randomisant à chaque boot, on évite le tracking matériel.
@@ -136,7 +142,7 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────────────
-# ÉTAPE 5 : Connexion WiFi via wpa_supplicant + DHCP
+# ÉTAPE 4 : Connexion WiFi via wpa_supplicant + dhclient
 # wifi.conf contient les credentials WPA2 (SSID + mot de passe).
 # Créé par gygeslink-setup-portal.py lors du premier setup.
 # Si absent : mode setup requis (pas de connexion internet possible).
@@ -145,25 +151,14 @@ WIFI_CONF="/data/gygeslink/wifi.conf"
 
 if [ ! -f "$WIFI_CONF" ]; then
     ERR "Aucune config WiFi ($WIFI_CONF) — setup requis."
-    ERR "Le boîtier sera en fail-close jusqu'au setup."
-    # Echec explicite : le service setup prendra le relais, Tor ne démarrera pas
-    exit 1
+    ERR "Le boîtier reste en fail-close jusqu'au setup."
+    # Ne pas exit 1 ici : le portail setup a besoin de usb0,
+    # et le mode setup a déjà ouvert le 443. Mais Tor ne doit pas démarrer.
+    # On sort proprement sans lancer wpa_supplicant.
+    exit 0
 fi
 
 LOG "Connexion WiFi (wpa_supplicant)..."
-
-# Tuer tout wpa_supplicant existant (lancé par Armbian) pour éviter
-# "ressource occupée" à la relance
-pkill -x wpa_supplicant 2>/dev/null || true
-sleep 1
-
-# Attendre que wlan0 soit complètement down
-for _ in $(seq 1 10); do
-    if ! pgrep -x wpa_supplicant >/dev/null; then
-        break
-    fi
-    sleep 1
-done
 
 # Lancer wpa_supplicant en arrière-plan
 # -B = background, -i = interface, -c = config, -P = PID file
@@ -174,7 +169,7 @@ fi
 
 # Attendre l'association WiFi (max WIFI_TIMEOUT secondes, défaut 20s)
 WAITED=0
-while [ $WAITED -lt "${WIFI_TIMEOUT:-20}" ]; do
+while [ "$WAITED" -lt "$WIFI_TIMEOUT" ]; do
     if wpa_cli -i wlan0 status 2>/dev/null | grep -q "wpa_state=COMPLETED"; then
         LOG "WiFi associé."
         break
@@ -183,30 +178,18 @@ while [ $WAITED -lt "${WIFI_TIMEOUT:-20}" ]; do
     WAITED=$((WAITED + 1))
 done
 
-if [ $WAITED -ge "${WIFI_TIMEOUT:-20}" ]; then
-    ERR "Association WiFi timeout (${WIFI_TIMEOUT:-20}s) — SSID joignable ?"
+if [ "$WAITED" -ge "$WIFI_TIMEOUT" ]; then
+    ERR "Association WiFi timeout (${WIFI_TIMEOUT}s) — SSID joignable ?"
     exit 1
 fi
 
-# Obtenir une IP via DHCP sur wlan0
-LOG "Obtention IP sur wlan0 via DHCP..."
+# Obtenir une IP via dhclient sur wlan0
+# -1 : tentative unique, pas de retry infini
+# --no-pid : ne pas écraser un PID existant
+LOG "Obtention IP sur wlan0 via dhclient..."
 
-# dhcpcd est le client DHCP standard sur Armbian/Debian minimal.
-# dhclient (isc-dhcp-client) est rarement présent sur les images minimales.
-# udhcpc (busybox) est un fallback.
-dhcp_ok=0
-if command -v dhcpcd >/dev/null; then
-    if timeout "${DHCP_TIMEOUT:-30}" dhcpcd wlan0 2>/dev/null; then
-        dhcp_ok=1
-    fi
-elif command -v udhcpc >/dev/null; then
-    if timeout "${DHCP_TIMEOUT:-30}" udhcpc -i wlan0 2>/dev/null; then
-        dhcp_ok=1
-    fi
-fi
-
-if [ "$dhcp_ok" -ne 1 ]; then
-    ERR "DHCP wlan0 échoué — aucun client DHCP disponible (dhcpcd, udhcpc) ou timeout."
+if ! timeout "$DHCP_TIMEOUT" dhclient -1 wlan0 2>/dev/null; then
+    ERR "DHCP wlan0 timeout — routeur joignable ?"
     exit 1
 fi
 
