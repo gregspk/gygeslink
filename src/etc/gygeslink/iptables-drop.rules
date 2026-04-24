@@ -11,6 +11,11 @@
 -A INPUT -i lo -j ACCEPT
 -A OUTPUT -o lo -j ACCEPT
 
+# Connexions établies : autoriser le retour du trafic légitime
+# Nécessaire pour que les réponses aux connexions sortantes (DHCP, DNS, Tor, SSH)
+# puissent revenir. Sans cette règle, tout TCP sortant est One-Way = inutile.
+-A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+
 # DHCP serveur sur usb0 : le PC doit pouvoir obtenir une IP même en fail-close
 # (sans IP, le PC ne sait même pas qu'il est branché au boîtier)
 -A INPUT -i usb0 -p udp --dport 67 -j ACCEPT
