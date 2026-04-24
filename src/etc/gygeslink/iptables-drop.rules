@@ -17,12 +17,13 @@
 -A OUTPUT -o usb0 -p udp --sport 67 -j ACCEPT
 
 # NTP sortant du boîtier uniquement (si DS3231 indisponible au premier boot)
-# Désactiver cette règle une fois le DS3231 confirmé fonctionnel
 -A OUTPUT -o wlan0 -p udp --dport 123 -j ACCEPT
 
+# DHCP client sur wlan0 (pour obtenir une IP du routeur FAI)
+-A INPUT -i wlan0 -p udp --sport 67 --dport 68 -j ACCEPT
+-A OUTPUT -o wlan0 -p udp --sport 68 --dport 67 -j ACCEPT
+
 # WireGuard → endpoint Mullvad (Tier 2)
-# Nécessaire dès la phase de boot pour que wg-quick up puisse compléter
-# le handshake avant le démarrage de Tor.
 -A OUTPUT -o wlan0 -p udp --dport 51820 -j ACCEPT
 
 COMMIT

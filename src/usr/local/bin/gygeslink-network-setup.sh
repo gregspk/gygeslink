@@ -152,6 +152,19 @@ fi
 
 LOG "Connexion WiFi (wpa_supplicant)..."
 
+# Tuer tout wpa_supplicant existant (lancé par Armbian) pour éviter
+# "ressource occupée" à la relance
+pkill -x wpa_supplicant 2>/dev/null || true
+sleep 1
+
+# Attendre que wlan0 soit complètement down
+for _ in $(seq 1 10); do
+    if ! pgrep -x wpa_supplicant >/dev/null; then
+        break
+    fi
+    sleep 1
+done
+
 # Lancer wpa_supplicant en arrière-plan
 # -B = background, -i = interface, -c = config, -P = PID file
 if ! wpa_supplicant -B -i wlan0 -c "$WIFI_CONF" -P /run/wpa_supplicant-wlan0.pid 2>/dev/null; then
@@ -178,13 +191,27 @@ fi
 # Obtenir une IP via DHCP sur wlan0
 LOG "Obtention IP sur wlan0 via DHCP..."
 
-if timeout "${DHCP_TIMEOUT:-30}" dhclient -v wlan0 2>/dev/null; then
-    WLAN0_IP=$(ip addr show wlan0 | awk '/inet / {print $2}')
-    LOG "wlan0 configuré : $WLAN0_IP"
-else
-    ERR "DHCP wlan0 timeout — routeur joignable ?"
+# dhcpcd est le client DHCP standard sur Armbian/Debian minimal.
+# dhclient (isc-dhcp-client) est rarement présent sur les images minimales.
+# udhcpc (busybox) est un fallback.
+dhcp_ok=0
+if command -v dhcpcd >/dev/null; then
+    if timeout "${DHCP_TIMEOUT:-30}" dhcpcd wlan0 2>/dev/null; then
+        dhcp_ok=1
+    fi
+elif command -v udhcpc >/dev/null; then
+    if timeout "${DHCP_TIMEOUT:-30}" udhcpc -i wlan0 2>/dev/null; then
+        dhcp_ok=1
+    fi
+fi
+
+if [ "$dhcp_ok" -ne 1 ]; then
+    ERR "DHCP wlan0 échoué — aucun client DHCP disponible (dhcpcd, udhcpc) ou timeout."
     exit 1
 fi
+
+WLAN0_IP=$(ip addr show wlan0 | awk '/inet / {print $2}')
+LOG "wlan0 configuré : $WLAN0_IP"
 
 # Empêcher dhclient d'avoir écrasé /etc/resolv.conf avec les DNS du FAI.
 # Le boîtier ne résout JAMAIS via le FAI : Tor fait sa propre résolution.
