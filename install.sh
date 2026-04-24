@@ -1,26 +1,27 @@
 #!/bin/bash
 # GygesLink — Script d'installation
-# Exécuté manuellement après le premier boot d'Armbian.
-# Configure le WiFi via NetworkManager, déploie les fichiers, active les services.
+# Exécuté sur le Pi après le premier boot d'Armbian.
+# Configure le WiFi, déploie les fichiers, crée les utilisateurs, active les services.
 
 set -euo pipefail
 
 LOG() { echo "[gygeslink-install] $*"; }
 ERR() { echo "[gygeslink-install] ERREUR: $*" >&2; }
 
-# ── Vérifications préalables ──────────────────────────────────────
+REPO_DIR="/opt/gygeslink"
+
 if [ "$(id -u)" -ne 0 ]; then
     ERR "Ce script doit être exécuté en root (sudo)."
     exit 1
 fi
 
-REPO_DIR="/opt/gygeslink"
 if [ ! -f "$REPO_DIR/src/usr/local/bin/gygeslink-network-setup.sh" ]; then
-    ERR "Ce script doit être exécuté depuis /opt/gygeslink/install.sh"
+    ERR "Ce script doit être exécuté depuis $REPO_DIR/install.sh"
     exit 1
 fi
 
 # ── Demander le WiFi ─────────────────────────────────────────────
+LOG "Configuration du WiFi"
 read -p "SSID WiFi : " WIFI_SSID
 read -p "Mot de passe WiFi : " WIFI_PSK
 
@@ -29,9 +30,10 @@ if [ -z "$WIFI_SSID" ]; then
     exit 1
 fi
 
-# ── Configurer NetworkManager pour le WiFi ────────────────────────
-NM_CONN_FILE="/etc/NetworkManager/system-connections/GygesLink-WiFi.nmconnection"
+# ── Configurer NetworkManager ────────────────────────────────────
+mkdir -p /etc/NetworkManager/system-connections
 
+NM_CONN_FILE="/etc/NetworkManager/system-connections/GygesLink-WiFi.nmconnection"
 cat > "$NM_CONN_FILE" << EOF
 [connection]
 id=GygesLink-WiFi
@@ -53,11 +55,10 @@ method=auto
 [ipv6]
 method=disabled
 EOF
-
 chmod 600 "$NM_CONN_FILE"
 LOG "Connexion WiFi NM configurée : $WIFI_SSID"
 
-# ── Garder wifi.conf pour le portail setup (premier boot) ─────────
+# ── Garder wifi.conf pour compatibilité (portail setup) ──────────
 mkdir -p /data/gygeslink
 cat > /data/gygeslink/wifi.conf << EOF
 network={
@@ -68,36 +69,56 @@ network={
 EOF
 chmod 600 /data/gygeslink/wifi.conf
 
-# ── Activer l'overlay dwc2 pour le mode USB gadget ──────────────
+# ── Overlay dwc2 pour USB gadget ────────────────────────────────
 if [ -f /boot/armbianEnv.txt ]; then
     if grep -q "^overlays=" /boot/armbianEnv.txt; then
-        sed -i 's/^overlays=.*/& dwc2/' /boot/armbianEnv.txt
+        if ! grep -q "dwc2" /boot/armbianEnv.txt; then
+            sed -i 's/^overlays=.*/& dwc2/' /boot/armbianEnv.txt
+        fi
     else
         echo "overlays=dwc2" >> /boot/armbianEnv.txt
     fi
-    LOG "Overlay dwc2 ajouté à /boot/armbianEnv.txt"
+    LOG "Overlay dwc2 configuré"
 else
-    ERR "/boot/armbianEnv.txt non trouvé — ajouter l'overlay dwc2 manuellement."
+    ERR "/boot/armbianEnv.txt non trouvé — ajout manuel requis."
 fi
 
-# ── Créer les utilisateurs système ──────────────────────────────────
-id gygeslink-noise &>/dev/null || useradd --system --no-create-home --shell /usr/sbin/nologin gygeslink-noise
+# ── Installer les paquets ───────────────────────────────────────
+LOG "Installation des paquets..."
+apt update && apt install -y \
+    iptables dnsmasq isc-dhcp-client macchanger wpasupplicant \
+    tor obfs4proxy wireguard-tools python3-pip python3-libgpiod \
+    i2c-tools git python3-flask python3-flask-limiter python3-requests \
+    python3-aiohttp network-manager
 
-# ── Désactiver le service tor de Debian ───────────────────────────
+# ── Créer les utilisateurs système ──────────────────────────────
+id gygeslink-noise &>/dev/null || useradd --system --no-create-home --shell /usr/sbin/nologin gygeslink-noise
+LOG "Utilisateur gygeslink-noise créé"
+
+# ── Désactiver le service tor de Debian ─────────────────────────
 systemctl stop tor 2>/dev/null || true
 systemctl disable tor 2>/dev/null || true
 
-# ── Déployer les fichiers du repo ─────────────────────────────────
-cp -rv "$REPO_DIR/src/*" /
-LOG "Fichiers déployés."
-
+# ── Déployer les fichiers ────────────────────────────────────────
+LOG "Déploiement des fichiers..."
+cp -r "$REPO_DIR/src/etc" / 2>/dev/null || true
+cp -r "$REPO_DIR/src/usr" / 2>/dev/null || true
+cp -r "$REPO_DIR/src/data" / 2>/dev/null || true
 chmod +x /usr/local/bin/gygeslink-*.sh /usr/local/bin/gygeslink-*.py \
-         /usr/local/bin/noise_generator.py
+         /usr/local/bin/noise_generator.py 2>/dev/null || true
 
-# ── Désactiver dnsmasq au boot (lancé manuellement par network-setup) ──
+# ── Setup-done ──────────────────────────────────────────────────
+touch /data/gygeslink/setup-done
+
+# ── NetworkManager ──────────────────────────────────────────────
+systemctl enable NetworkManager
+systemctl start NetworkManager 2>/dev/null || true
+
+# ── Désactiver dnsmasq au boot ──────────────────────────────────
 systemctl disable dnsmasq 2>/dev/null || true
 
-# ── Activer les services GygesLink ────────────────────────────────
+# ── Activer les services GygesLink ──────────────────────────────
+systemctl daemon-reload
 systemctl enable gygeslink-usb-gadget.service
 systemctl enable gygeslink-network-setup.service
 systemctl enable gygeslink-tor.service
@@ -105,22 +126,14 @@ systemctl enable gygeslink-iptables-open.service
 systemctl enable gygeslink-jitter.service
 systemctl enable gygeslink-noise.service
 
-# LED et bouton (non câblés en développement)
 systemctl disable gygeslink-led.service 2>/dev/null || true
 systemctl disable gygeslink-button.service 2>/dev/null || true
-
-# ── Setup-done (WiFi déjà configuré) ──────────────────────────────
-touch /data/gygeslink/setup-done
-
-# ── Activer NetworkManager ────────────────────────────────────────
-systemctl enable NetworkManager
-systemctl start NetworkManager 2>/dev/null || true
 
 LOG "============================================"
 LOG "Installation terminée."
 LOG "Le Pi va redémarrer dans 5 secondes."
 LOG "Après le reboot :"
-LOG "  - SSH : ssh gygeslink@<IP_du_Pi>"
+LOG "  - SSH : ssh root@<IP_du_Pi>"
 LOG "  - USB : brancher le câble USB-C au PC"
 LOG "============================================"
 
