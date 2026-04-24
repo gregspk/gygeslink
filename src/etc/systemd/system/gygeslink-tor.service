@@ -13,10 +13,10 @@ Wants=gygeslink-wireguard.service
 # Tor peut démarrer sans bridges (Tier 1 direct, sans obfs4).
 
 [Service]
-# forking : Tor se daémonise lui-même (fork en arrière-plan après init).
-# systemd attend que le processus parent se termine, ce qui indique
-# que Tor a fini son initialisation.
-Type=forking
+# simple : Tor est lancé avec --nohup pour rester en avant-plan.
+# systemd considère le service comme actif dès que le process tourne.
+# Le bootstrap peut prendre 1-2 minutes, mais systemd le laisse tourner.
+Type=simple
 
 # Tor tourne sous l'utilisateur dédié debian-tor (créé par le paquet tor)
 # Cet utilisateur a uniquement les permissions nécessaires pour Tor.
@@ -28,19 +28,15 @@ Group=debian-tor
 # Préfixe + : ExecStartPre tourne en root (nécessaire pour sed -i sur torrc).
 ExecStartPre=+/usr/local/bin/gygeslink-tor-prestart.sh
 
-ExecStart=/usr/bin/tor -f /etc/tor/torrc
-
-# PIDFile : indique à systemd où Tor écrit son PID (pour le suivi)
-PIDFile=/run/tor/tor.pid
+ExecStart=/usr/bin/tor -f /etc/tor/torrc --no-hush
 
 # Créer automatiquement /run/tor avant démarrage (évite l'échec si le
 # répertoire n'existe pas encore, ex: premier boot ou overlayfs).
 RuntimeDirectory=tor
 
-# Timeout généreux : les bridges obfs4 peuvent prendre du temps à répondre
-# (surtout si le FAI pratique un DPI agressif).
-# 90s était trop court (piège connu) → 180s
-TimeoutStartSec=180
+# Timeout très généreux : Tor peut mettre 2-3 minutes à bootstrap
+# sans bridges, surtout si le réseau est lent.
+TimeoutStartSec=300
 
 # Redémarrage en cas d'échec (ex: bridge temporairement indisponible)
 Restart=on-failure
