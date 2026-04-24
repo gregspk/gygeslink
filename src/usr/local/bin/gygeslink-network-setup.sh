@@ -84,9 +84,17 @@ LOG "usb0 configuré : $USB0_ADDR"
 # Relancer dnsmasq pour qu'il prenne en compte usb0 (DHCP côté PC).
 # Le fichier /etc/dnsmasq.d/gygeslink-usb0.conf configure le DHCP
 # sur 192.168.100.100-110/24 pour le PC branché en USB-C.
-# On utilise restart (pas start) car dnsmasq peut déjà tourner.
-systemctl restart dnsmasq 2>/dev/null || true
-LOG "dnsmasq (re)démarré — DHCP actif sur usb0."
+# IMPORTANT : ne PAS utiliser systemctl restart ici — le drop-in
+# dnsmasq.service.d/gygeslink-ordering.conf impose After=gygeslink-network-setup.
+# Si on appelle systemctl restart depuis ce script, dnsmasq attend que ce
+# service finisse, et ce service attend que dnsmasq redémarre = deadlock.
+# On lance dnsmasq directement en arrière-plan à la place.
+if [ -f /etc/dnsmasq.d/gygeslink-usb0.conf ]; then
+    dnsmasq -u dnsmasq --conf-file=/etc/dnsmasq.conf 2>/dev/null || true
+    LOG "dnsmasq lancé en arrière-plan — DHCP actif sur usb0."
+else
+    LOG "ATTENTION : /etc/dnsmasq.d/gygeslink-usb0.conf absent — DHCP non configuré."
+fi
 
 # ─────────────────────────────────────────────────────────────────────
 # ÉTAPE 2 : Appliquer les règles iptables DROP (fail-close)
