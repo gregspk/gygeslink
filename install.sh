@@ -80,6 +80,9 @@ else
     ERR "/boot/armbianEnv.txt non trouvé — ajouter l'overlay dwc2 manuellement."
 fi
 
+# ── Créer les utilisateurs système ──────────────────────────────────
+id gygeslink-noise &>/dev/null || useradd --system --no-create-home --shell /usr/sbin/nologin gygeslink-noise
+
 # ── Désactiver le service tor de Debian ───────────────────────────
 systemctl stop tor 2>/dev/null || true
 systemctl disable tor 2>/dev/null || true
