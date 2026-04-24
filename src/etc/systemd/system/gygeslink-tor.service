@@ -28,7 +28,7 @@ Group=debian-tor
 # Préfixe + : ExecStartPre tourne en root (nécessaire pour sed -i sur torrc).
 ExecStartPre=+/usr/local/bin/gygeslink-tor-prestart.sh
 
-ExecStart=/usr/bin/tor -f /etc/tor/torrc --no-hush
+ExecStart=/usr/bin/tor -f /etc/tor/torrc
 
 # Créer automatiquement /run/tor avant démarrage (évite l'échec si le
 # répertoire n'existe pas encore, ex: premier boot ou overlayfs).
