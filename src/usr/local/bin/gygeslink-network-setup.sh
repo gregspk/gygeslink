@@ -3,7 +3,7 @@
 # Exécuté par gygeslink-network.service (Type=oneshot)
 #
 # ORDRE CRITIQUE DE SÉCURITÉ :
-#   1. Configurer usb0 (côté PC — USB gadget g_ether)
+#   1. Configurer usb0 (côté PC — USB gadget RNDIS via configfs)
 #   2. Appliquer iptables DROP immédiatement (fail-close atomique)
 #   3. Randomiser MAC wlan0 (avant toute association WiFi)
 #   4. Se connecter au réseau WiFi via wpa_supplicant + DHCP
@@ -15,11 +15,21 @@ ERR() { echo "[gygeslink-network] ERREUR: $*" >&2; }
 
 # ─────────────────────────────────────────────────────────────────────
 # ÉTAPE 1 : Configurer usb0 (interface côté PC)
-# usb0 est créée automatiquement par le kernel via dwc2 + g_ether
-# (USB gadget mode — le PC voit une carte réseau USB).
-# Le boîtier agit comme un serveur DHCP pour le PC.
+# usb0 est créée par le gadget USB configfs (RNDIS) via
+# gygeslink-usb-gadget.service, exécuté AVANT ce service.
+# Si usb0 est absente (boot lente), on attend brièvement.
 # ─────────────────────────────────────────────────────────────────────
 LOG "Configuration usb0 (côté PC, USB gadget)..."
+
+if ! ip link show usb0 >/dev/null 2>&1; then
+    LOG "usb0 absente, attente du gadget (2s)..."
+    sleep 2
+fi
+
+if ! ip link show usb0 >/dev/null 2>&1; then
+    ERR "usb0 toujours absente après attente — vérifier gygeslink-usb-gadget.service."
+    exit 1
+fi
 
 ip link set usb0 up
 ip addr flush dev usb0 2>/dev/null || true
@@ -40,8 +50,16 @@ LOG "usb0 configuré : 192.168.100.1/24"
 # Relancer dnsmasq pour qu'il prenne en compte usb0 (DHCP côté PC).
 # Le fichier /etc/dnsmasq.d/gygeslink-usb0.conf configure le DHCP
 # sur 192.168.100.100-110/24 pour le PC branché en USB-C.
-systemctl restart dnsmasq 2>/dev/null || true
-LOG "dnsmasq (re)démarré — DHCP actif sur usb0."
+# --no-block : ne pas bloquer l'exécution du script si dnsmasq met
+# du temps à redémarrer (peut entrer en conflit avec un autre service
+# tenant le port 53).
+if systemctl is-active --quiet dnsmasq 2>/dev/null; then
+    systemctl restart --no-block dnsmasq
+    LOG "dnsmasq relancé (asynchrone)."
+else
+    systemctl start --no-block dnsmasq
+    LOG "dnsmasq démarré (asynchrone)."
+fi
 
 # ─────────────────────────────────────────────────────────────────────
 # ÉTAPE 2 : Appliquer les règles iptables DROP (fail-close)

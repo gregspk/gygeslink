@@ -1,0 +1,28 @@
+[Unit]
+Description=GygesLink — USB Gadget RNDIS (configfs)
+# DefaultDependencies=no : doit démarrer le plus tôt possible,
+# après que les modules kernel soient chargés.
+DefaultDependencies=no
+
+# Les modules dwc2/libcomposite/usb_f_rndis doivent être chargés
+# avant que le script ne tente de créer le gadget.
+After=modules-load.service systemd-modules-load.service
+
+# usb0 doit exister avant que network-setup.sh essaie de la configurer.
+Before=gygeslink-network-setup.service
+
+[Service]
+# oneshot : le script configure configfs puis se termine.
+# RemainAfterExit=yes : le service reste "actif" pour que
+# ExecStop puisse nettoyer le gadget à l'arrêt.
+Type=oneshot
+RemainAfterExit=yes
+
+# Création du gadget RNDIS via configfs
+ExecStart=/usr/local/bin/gygeslink-usb-gadget.sh
+
+# Nettoyage propre à l'arrêt (détacher UDC, supprimer configfs)
+ExecStop=/usr/local/bin/gygeslink-usb-gadget-cleanup.sh
+
+[Install]
+WantedBy=multi-user.target

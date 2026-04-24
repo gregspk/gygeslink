@@ -4,9 +4,12 @@ Description=GygesLink — Configuration réseau + iptables fail-close
 # (on veut que DROP soit actif AVANT que wlan0 contacte le routeur FAI)
 DefaultDependencies=no
 
-# Ordre : heure d'abord (DS3231), réseau ensuite
+# Ordre : heure d'abord (DS3231), gadget USB ensuite, réseau ensuite
 After=gygeslink-timesync.service
 Wants=gygeslink-timesync.service
+
+# usb0 doit exister avant ce service (créée par le gadget RNDIS)
+After=gygeslink-usb-gadget.service
 
 # Déclarer que ce service remplace network-online.target pour la suite
 Before=network-online.target
