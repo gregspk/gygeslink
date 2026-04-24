@@ -1,39 +1,29 @@
 [Unit]
-Description=GygesLink — Configuration réseau + iptables fail-close
-# DefaultDependencies=no : démarrage avant la cible réseau standard
-# (on veut que DROP soit actif AVANT que wlan0 contacte le routeur FAI)
-DefaultDependencies=no
+Description=GygesLink — Configuration usb0 + iptables fail-close
+# Ce service configure usb0 et applique iptables.
+# wlan0 est géré par NetworkManager — on n'y touche PAS.
+# On attend que NetworkManager soit prêt (il gère le WiFi).
 
-# Ordre : heure d'abord (DS3231), gadget USB ensuite, réseau ensuite
-After=gygeslink-timesync.service
-Wants=gygeslink-timesync.service
-
-# usb0 doit exister avant ce service (créée par le gadget RNDIS)
 After=gygeslink-usb-gadget.service
-Requires=gygeslink-usb-gadget.service
+After=NetworkManager-wait-online.service
+Wants=gygeslink-usb-gadget.service
+Wants=NetworkManager-wait-online.service
 
-# Déclarer que ce service remplace network-online.target pour la suite
 Before=network-online.target
 
 [Service]
-# oneshot : le script s'exécute une fois et se termine.
-# Le service reste "actif" après la fin (RemainAfterExit) pour que
-# les services suivants puissent exprimer After=gygeslink-network-setup.
 Type=oneshot
 RemainAfterExit=yes
 
 # Le script fait :
-#   0. Désactiver NetworkManager sur wlan0/usb0
 #   1. Configurer usb0 (192.168.100.1/24) — USB gadget côté PC
-#   2. Appliquer iptables DROP atomiquement (fail-close immédiat)
-#   3. Charger /data/gygeslink/network.conf si présent
-#   4. MAC randomization sur wlan0 (macchanger -r)
-#   5. wpa_supplicant + dhclient wlan0 (connexion WiFi + IP du routeur FAI)
+#   2. Lancer dnsmasq (DHCP pour le PC sur usb0)
+#   3. Attendre que wlan0 obtienne une IPv4 via NetworkManager
+#   4. Appliquer iptables fail-close atomiquement
+#   5. Ouvrir le portail HTTPS si setup-done absent
 ExecStart=/usr/local/bin/gygeslink-network-setup.sh
 
-# En cas d'échec du script, le trafic reste bloqué (iptables DROP
-# est appliqué en début de script — si le script plante après l'étape 2,
-# les règles DROP restent en place).
+# En cas d'échec, le trafic reste bloqué (iptables DROP est appliqué).
 Restart=no
 
 [Install]

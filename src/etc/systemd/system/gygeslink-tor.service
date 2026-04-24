@@ -5,10 +5,8 @@ Description=GygesLink — Tor + obfs4 (anonymisation transparente)
 #   - wireguard (tier status connu → torrc configuré correctement)
 After=gygeslink-network-setup.service
 After=gygeslink-wireguard.service
-
-# Requires : si gygeslink-network-setup échoue, Tor ne démarre pas
-# (pas de réseau = pas de Tor = trafic resté bloqué = fail-close correct)
-Requires=gygeslink-network-setup.service
+Wants=gygeslink-network-setup.service
+Wants=gygeslink-wireguard.service
 
 # Note : bridges.conf est optionnel — le script gygeslink-tor-prestart.sh
 # active ou désactive UseBridges selon le tier et la présence des bridges.
