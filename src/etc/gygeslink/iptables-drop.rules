@@ -15,6 +15,7 @@
 # Nécessaire pour que les réponses aux connexions sortantes (DHCP, DNS, Tor, SSH)
 # puissent revenir. Sans cette règle, tout TCP sortant est One-Way = inutile.
 -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+-A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
 
 # DHCP serveur sur usb0 : le PC doit pouvoir obtenir une IP même en fail-close
 # (sans IP, le PC ne sait même pas qu'il est branché au boîtier)

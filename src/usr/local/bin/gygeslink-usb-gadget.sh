@@ -6,11 +6,6 @@
 #
 # Prérequis (modules-load.d/gygeslink.conf) :
 #   dwc2, libcomposite, usb_f_ncm
-#
-# Pourquoi CDC-NCM et pas RNDIS ?
-#   RNDIS est obsolète sur Windows 10/11 (driver souvent absent).
-#   CDC-NCM est standard USB-IF, reconnu nativement par tous les OS modernes.
-#   Zéro configuration, zéro driver additionnel.
 
 set -uo pipefail
 
@@ -22,7 +17,7 @@ ERR() { echo "[usb-gadget] ERREUR: $*" >&2; }
 
 # ── Attendre que configfs soit monté ──────────────────────────────
 if [ ! -d /sys/kernel/config/usb_gadget ]; then
-    ERR "configfs non monté — /sys/kernel/config/usb_gadget/ absent."
+    ERR "configfs non monté."
     exit 1
 fi
 
@@ -47,9 +42,7 @@ fi
 mkdir -p "$GADGET_DIR"
 cd "$GADGET_DIR" || { ERR "Échec cd $GADGET_DIR"; exit 1; }
 
-# ── IDs USB ───────────────────────────────────────────────────────
-# VID 0x0525 / PID 0xa4a1 = Linux CDC NCM Gadget
-# bDeviceClass 0x02 = Communications (CDC)
+# ── IDs USB : CDC-NCM standard ───────────────────────────────────
 echo 0x0525     > idVendor
 echo 0xa4a1     > idProduct
 echo 0x0100     > bcdDevice
@@ -74,26 +67,33 @@ mkdir -p functions/ncm.usb0
 echo "ea:11:22:33:44:55" > functions/ncm.usb0/dev_addr
 echo "02:11:22:33:44:66" > functions/ncm.usb0/host_addr
 
-# Lier la fonction NCM à la config
 ln -sf "$GADGET_DIR/functions/ncm.usb0" "$GADGET_DIR/configs/c.1/"
 
-# ── Activer le gadget sur l'UDC ──────────────────────────────────
+# ── Activer le gadget ────────────────────────────────────────────
 sleep 1
 
 if [ -n "$UDC" ]; then
     echo "$UDC" > UDC
     LOG "Gadget CDC-NCM activé sur $UDC"
 else
-    ERR "Aucun UDC trouvé — câble USB-C branché ?"
-    exit 1
+    ERR "Aucun UDC trouvé — démarrage sans USB."
+    # Ne pas exit 1 : le Pi peut démarrer sans câble USB branché
+    # Le gadget sera activé quand le câble sera branché
 fi
 
 sleep 2
 
-# L'interface s'appelle usb0 (créée par le kernel)
-if ip link show usb0 > /dev/null 2>&1; then
-    LOG "Interface usb0 détectée — gadget prêt."
+# L'interface peut être usb0 ou usb1
+USB_IF=""
+for iface in usb0 usb1 usb2; do
+    if ip link show "$iface" > /dev/null 2>&1; then
+        USB_IF="$iface"
+        break
+    fi
+done
+
+if [ -n "$USB_IF" ]; then
+    LOG "Interface $USB_IF détectée — gadget prêt."
 else
-    ERR "Interface usb0 non détectée."
-    exit 1
+    LOG "Aucune interface USB détectée — sera configurable plus tard."
 fi

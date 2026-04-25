@@ -47,8 +47,6 @@ TransPort 192.168.100.1:9040 IsolateClientAddr IsolateClientProtocol IsolateDest
 
 # ── DNSPort — résolution DNS via Tor ─────────────────────────────────
 # Écoute sur 192.168.100.1:5353.
-# iptables redirige tout UDP/53 entrant sur usb0 vers ce port.
-# Résout les noms de domaine via le réseau Tor → aucune fuite DNS.
 DNSPort 192.168.100.1:5353
 
 # ── Proxy transparent : support des adresses .onion ──────────────────

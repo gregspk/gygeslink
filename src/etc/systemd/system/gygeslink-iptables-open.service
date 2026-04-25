@@ -1,40 +1,16 @@
 [Unit]
 Description=GygesLink — Ouverture iptables (Tor opérationnel)
-# CE SERVICE EST LE VERROU DE SÉCURITÉ CENTRAL.
-#
-# Il applique iptables-tor.rules (redirection trafic → Tor)
-# UNIQUEMENT après que Tor est bootstrappé à 100%.
-#
-# Avant ce service : tout trafic est bloqué (iptables-drop.rules).
-# Après ce service : tout trafic TCP/DNS est redirigé vers Tor.
-#
-# Séquence : iptables-drop → réseau → wireguard? → Tor → iptables-open
-#
 After=gygeslink-tor.service
 Requires=gygeslink-tor.service
-
-# PartOf : si Tor redémarre (Restart=on-failure), ce service redémarre aussi
-# pour ré-appliquer iptables-tor.rules. Sans cela, Tor serait actif mais le
-# trafic resterait bloqué par iptables-drop.rules.
 PartOf=gygeslink-tor.service
-
-# BindsTo : si Tor s'arrête (crash, kill), ce service s'arrête aussi
-# → ExecStop applique à nouveau iptables-drop.rules → fail-close automatique.
-# C'est la garantie que le trafic ne "fuit" JAMAIS en clair si Tor tombe.
 BindsTo=gygeslink-tor.service
 
 [Service]
 Type=oneshot
 RemainAfterExit=yes
 
-# Ouvrir : charger les règles de redirection vers Tor
-ExecStart=/sbin/iptables-restore /etc/gygeslink/iptables-tor.rules
-ExecStart=/sbin/ip6tables-restore /etc/gygeslink/ip6tables-tor.rules
-
-# Fermer : repasser en mode DROP si Tor s'arrête
-# (déclenché par BindsTo quand gygeslink-tor.service s'arrête)
-ExecStop=/sbin/iptables-restore /etc/gygeslink/iptables-drop.rules
-ExecStop=/sbin/ip6tables-restore /etc/gygeslink/ip6tables-drop.rules
+ExecStart=/usr/local/bin/gygeslink-iptables.sh open
+ExecStop=/usr/local/bin/gygeslink-iptables.sh close
 
 [Install]
 WantedBy=multi-user.target

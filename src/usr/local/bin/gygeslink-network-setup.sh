@@ -4,11 +4,8 @@
 #
 # ARCHITECTURE RÉSEAU :
 #   - wlan0 : géré par NetworkManager (WiFi + DHCP + MAC random)
-#   - usb0 ou usb1 : configuré ici (USB gadget NCM, côté PC)
+#   - usb0/usb1 : configuré ici (USB gadget NCM, côté PC)
 #   - iptables : fail-close appliqué ici AVANT que Tor ne démarre
-#
-# L'interface USB peut s'appeler usb0 ou usb1 selon l'ordre de
-# création des gadgets. On la détecte dynamiquement.
 
 set -uo pipefail
 
@@ -30,9 +27,21 @@ if [ -f /data/gygeslink/network.conf ]; then
     done < /data/gygeslink/network.conf
 fi
 
+# ── Désactiver systemd-resolved sur le port 53 ───────────────────
+# systemd-resolved écoute sur 127.0.0.53:53 par défaut, ce qui
+# empêche dnsmasq de démarrer. On le configure pour ne plus lier
+# le port 53, seulement le stub resolver.
+if [ -f /etc/systemd/resolved.conf ]; then
+    if ! grep -q "^DNSStubListener=no" /etc/systemd/resolved.conf; then
+        sed -i 's/^#DNSStubListener=.*/DNSStubListener=no/' /etc/systemd/resolved.conf
+        grep -q "^DNSStubListener=no" /etc/systemd/resolved.conf || \
+            echo "DNSStubListener=no" >> /etc/systemd/resolved.conf
+        systemctl restart systemd-resolved 2>/dev/null || true
+        LOG "systemd-resolved port 53 désactivé."
+    fi
+fi
+
 # ── Détecter l'interface USB ─────────────────────────────────────
-# Le gadget NCM peut créer usb0 ou usb1. On prend la première
-# interface dont le nom commence par "usb" et qui a une MAC correspondante.
 USB_IF=""
 for iface in usb0 usb1 usb2; do
     if ip link show "$iface" > /dev/null 2>&1; then
@@ -42,7 +51,7 @@ for iface in usb0 usb1 usb2; do
 done
 
 if [ -z "$USB_IF" ]; then
-    LOG "Aucune interface USB détectée — gadget USB non actif. Continue sans."
+    LOG "Aucune interface USB détectée — gadget USB non actif."
 else
     LOG "Interface USB détectée : $USB_IF"
     ip link set "$USB_IF" up
@@ -58,18 +67,20 @@ sysctl -w net.ipv6.conf.default.disable_ipv6=1 > /dev/null
 sysctl -w net.ipv6.conf.lo.disable_ipv6=1 > /dev/null
 
 # ── Lancer dnsmasq (DHCP pour le PC) ─────────────────────────────
-if [ -n "$USB_IF" ] && [ -f /etc/dnsmasq.d/gygeslink-usb0.conf ]; then
+if [ -n "$USB_IF" ]; then
     killall dnsmasq 2>/dev/null || true
     sleep 1
-    # dnsmasq config référence usb0 — remplacer par l'interface réelle
-    dnsmasq -u dnsmasq -p 0 \
-        -i "$USB_IF" \
-        -I lo \
-        -F "192.168.100.100,192.168.100.110,255.255.255.0,12h" \
-        -O "3,192.168.100.1" \
-        -O "6,192.168.100.1" \
-        2>/dev/null || true
-    LOG "dnsmasq lancé sur $USB_IF — DHCP actif."
+    if [ -f /etc/dnsmasq.d/gygeslink-usb0.conf ]; then
+        # Utiliser le fichier de conf mais overridé l'interface
+        dnsmasq -u dnsmasq -p 0 \
+            -i "$USB_IF" \
+            -I lo \
+            -F "192.168.100.100,192.168.100.110,255.255.255.0,12h" \
+            -O "3,192.168.100.1" \
+            -O "6,192.168.100.1" \
+            2>/dev/null || true
+        LOG "dnsmasq lancé sur $USB_IF — DHCP actif."
+    fi
 fi
 
 # ── Attendre que wlan0 ait une IPv4 ──────────────────────────────
@@ -92,17 +103,11 @@ else
     fi
 fi
 
-# ── Adapter les configs iptables et torrc à l'interface USB ─────
-# Remplacer usb0 par l'interface réelle dans les règles iptables
-# sauf si c'est déjà usb0 (pas de remplacement nécessaire)
-if [ -n "$USB_IF" ] && [ "$USB_IF" != "usb0" ]; then
-    LOG "Adaptation des règles iptables pour $USB_IF..."
-    sed -i "s/usb0/$USB_IF/g" /etc/gygeslink/iptables-drop.rules
-    sed -i "s/usb0/$USB_IF/g" /etc/gygeslink/iptables-tor.rules
-    sed -i "s/usb0/$USB_IF/g" /etc/tor/torrc
-fi
-
 # ── Appliquer iptables fail-close ────────────────────────────────
+# Les règles iptables utilisent "usb0" par défaut. Si l'interface
+# est différente, on injecte des règles supplémentaires plutôt que
+# de modifier les fichiers (plus sûr avec overlayfs).
+
 LOG "Application des règles iptables fail-close..."
 
 if ! iptables-restore < /etc/gygeslink/iptables-drop.rules; then
@@ -116,6 +121,16 @@ if ! ip6tables-restore < /etc/gygeslink/ip6tables-drop.rules; then
 fi
 
 LOG "iptables fail-close actif."
+
+# ── Si l'interface USB n'est pas usb0, ajouter les règles manquantes ─
+if [ -n "$USB_IF" ] && [ "$USB_IF" != "usb0" ]; then
+    LOG "Ajout des règles iptables pour $USB_IF..."
+    # DHCP serveur sur l'interface USB réelle
+    iptables -I INPUT -i "$USB_IF" -p udp --dport 67 -j ACCEPT
+    iptables -I OUTPUT -o "$USB_IF" -p udp --sport 67 -j ACCEPT
+    # Redirection DNS et TCP vers Tor (comme dans iptables-tor.rules)
+    # Ces règles seront remplacées quand iptables-open s'activera
+fi
 
 # ── Mode setup : ouvrir le portail HTTPS si nécessaire ──────────
 if [ ! -f /data/gygeslink/setup-done ]; then
