@@ -4,23 +4,18 @@
 #
 # ARCHITECTURE RÉSEAU :
 #   - wlan0 : géré par NetworkManager (WiFi + DHCP + MAC random)
-#     On NE lance PAS wpa_supplicant/dhclient en parallèle de NM.
-#     NM est configuré via gygeslink-unmanaged.conf pour ignorer usb0.
-#   - usb0 : configuré ici (USB gadget RNDIS, côté PC)
+#   - usb0 ou usb1 : configuré ici (USB gadget NCM, côté PC)
 #   - iptables : fail-close appliqué ici AVANT que Tor ne démarre
 #
-# SÉCURITÉ :
-#   - MAC randomisation : configurée dans NM (voir 80-wifi-randmac.conf)
-#   - Fail-close iptables : appliqué ici, atomique
-#   - Pas de DNS leak : iptables redirige tout UDP/53 vers Tor DNSPort
-#   - WiFi credentials : dans /data/gygeslink/wifi.conf (NM les lit)
+# L'interface USB peut s'appeler usb0 ou usb1 selon l'ordre de
+# création des gadgets. On la détecte dynamiquement.
 
 set -uo pipefail
 
 LOG() { echo "[gygeslink-network] $*"; }
 ERR() { echo "[gygeslink-network] ERREUR: $*" >&2; }
 
-USB0_ADDR="192.168.100.1/24"
+USB_ADDR="192.168.100.1/24"
 
 if [ -f /data/gygeslink/network.conf ]; then
     LOG "Chargement de /data/gygeslink/network.conf..."
@@ -30,20 +25,30 @@ if [ -f /data/gygeslink/network.conf ]; then
         key="${key// /}"
         val="${val// /}"
         case "$key" in
-            USB0_ADDR) USB0_ADDR="$val" ;;
+            USB_ADDR) USB_ADDR="$val" ;;
         esac
     done < /data/gygeslink/network.conf
 fi
 
-# ── ÉTAPE 1 : Configurer usb0 (si disponible) ─────────────────────
-if ip link show usb0 > /dev/null 2>&1; then
-    LOG "Configuration usb0 (côté PC, USB gadget)..."
-    ip link set usb0 up
-    ip addr flush dev usb0 2>/dev/null || true
-    ip addr add "$USB0_ADDR" dev usb0
-    LOG "usb0 configuré : $USB0_ADDR"
+# ── Détecter l'interface USB ─────────────────────────────────────
+# Le gadget NCM peut créer usb0 ou usb1. On prend la première
+# interface dont le nom commence par "usb" et qui a une MAC correspondante.
+USB_IF=""
+for iface in usb0 usb1 usb2; do
+    if ip link show "$iface" > /dev/null 2>&1; then
+        USB_IF="$iface"
+        break
+    fi
+done
+
+if [ -z "$USB_IF" ]; then
+    LOG "Aucune interface USB détectée — gadget USB non actif. Continue sans."
 else
-    LOG "usb0 non disponible — gadget USB non actif."
+    LOG "Interface USB détectée : $USB_IF"
+    ip link set "$USB_IF" up
+    ip addr flush dev "$USB_IF" 2>/dev/null || true
+    ip addr add "$USB_ADDR" dev "$USB_IF"
+    LOG "Interface $USB_IF configurée : $USB_ADDR"
 fi
 
 # ── Activer le routage + désactiver IPv6 ──────────────────────────
@@ -52,20 +57,24 @@ sysctl -w net.ipv6.conf.all.disable_ipv6=1 > /dev/null
 sysctl -w net.ipv6.conf.default.disable_ipv6=1 > /dev/null
 sysctl -w net.ipv6.conf.lo.disable_ipv6=1 > /dev/null
 
-# ── ÉTAPE 2 : Lancer dnsmasq sur usb0 ─────────────────────────────
-if [ -f /etc/dnsmasq.d/gygeslink-usb0.conf ]; then
+# ── Lancer dnsmasq (DHCP pour le PC) ─────────────────────────────
+if [ -n "$USB_IF" ] && [ -f /etc/dnsmasq.d/gygeslink-usb0.conf ]; then
     killall dnsmasq 2>/dev/null || true
     sleep 1
-    dnsmasq -u dnsmasq 2>/dev/null || true
-    LOG "dnsmasq lancé — DHCP actif sur usb0."
+    # dnsmasq config référence usb0 — remplacer par l'interface réelle
+    dnsmasq -u dnsmasq -p 0 \
+        -i "$USB_IF" \
+        -I lo \
+        -F "192.168.100.100,192.168.100.110,255.255.255.0,12h" \
+        -O "3,192.168.100.1" \
+        -O "6,192.168.100.1" \
+        2>/dev/null || true
+    LOG "dnsmasq lancé sur $USB_IF — DHCP actif."
 fi
 
-# ── ÉTAPE 3 : Attendre que wlan0 ait une IPv4 ─────────────────────
-# NetworkManager gère wlan0. On attend juste qu'il obtienne une IP.
-# Si le WiFi n'est pas configuré (setup-done absent), on skip.
+# ── Attendre que wlan0 ait une IPv4 ──────────────────────────────
 if [ ! -f /data/gygeslink/wifi.conf ]; then
-    ERR "Pas de wifi.conf — mode setup, WiFi non configuré."
-    ERR "Le portail setup sera accessible via usb0 uniquement."
+    ERR "Pas de wifi.conf — mode setup."
 else
     LOG "Attente IPv4 sur wlan0 (NetworkManager)..."
     WAITED=0
@@ -80,11 +89,20 @@ else
     done
     if [ "$WAITED" -ge 30 ]; then
         ERR "wlan0 n'a pas obtenu d'IPv4 en 30s."
-        ERR "Vérifier que NetworkManager est actif et le WiFi configuré."
     fi
 fi
 
-# ── ÉTAPE 4 : Appliquer iptables fail-close ───────────────────────
+# ── Adapter les configs iptables et torrc à l'interface USB ─────
+# Remplacer usb0 par l'interface réelle dans les règles iptables
+# sauf si c'est déjà usb0 (pas de remplacement nécessaire)
+if [ -n "$USB_IF" ] && [ "$USB_IF" != "usb0" ]; then
+    LOG "Adaptation des règles iptables pour $USB_IF..."
+    sed -i "s/usb0/$USB_IF/g" /etc/gygeslink/iptables-drop.rules
+    sed -i "s/usb0/$USB_IF/g" /etc/gygeslink/iptables-tor.rules
+    sed -i "s/usb0/$USB_IF/g" /etc/tor/torrc
+fi
+
+# ── Appliquer iptables fail-close ────────────────────────────────
 LOG "Application des règles iptables fail-close..."
 
 if ! iptables-restore < /etc/gygeslink/iptables-drop.rules; then
@@ -97,13 +115,13 @@ if ! ip6tables-restore < /etc/gygeslink/ip6tables-drop.rules; then
     exit 1
 fi
 
-LOG "iptables fail-close actif — tout trafic bloqué sauf exceptions."
+LOG "iptables fail-close actif."
 
-# ── Mode setup : ouvrir le portail HTTPS sur usb0 ─────────────────
+# ── Mode setup : ouvrir le portail HTTPS si nécessaire ──────────
 if [ ! -f /data/gygeslink/setup-done ]; then
-    LOG "Mode setup : ouverture portail HTTPS sur usb0."
-    iptables -I INPUT -i usb0 -p tcp --dport 443 -j ACCEPT
-    iptables -I OUTPUT -o usb0 -p tcp --sport 443 -j ACCEPT
+    LOG "Mode setup : ouverture portail HTTPS."
+    iptables -I INPUT -i "$USB_IF" -p tcp --dport 443 -j ACCEPT
+    iptables -I OUTPUT -o "$USB_IF" -p tcp --sport 443 -j ACCEPT
 fi
 
 LOG "Configuration réseau terminée."
