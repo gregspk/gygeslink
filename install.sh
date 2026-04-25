@@ -91,6 +91,9 @@ apt update && apt install -y \
     i2c-tools git python3-flask python3-flask-limiter python3-requests \
     python3-aiohttp network-manager
 
+# ── Installer aiohttp-socks (absent des dépôts Debian) ───────────
+pip3 install --break-system-packages aiohttp-socks 2>/dev/null || true
+
 # ── Créer les utilisateurs système ──────────────────────────────
 id gygeslink-noise &>/dev/null || useradd --system --no-create-home --shell /usr/sbin/nologin gygeslink-noise
 LOG "Utilisateur gygeslink-noise créé"
