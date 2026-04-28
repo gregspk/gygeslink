@@ -2,6 +2,11 @@
 # GygesLink — Script d'installation
 # Exécuté sur le Pi après le premier boot d'Armbian.
 # Configure le WiFi, déploie les fichiers, crée les utilisateurs, active les services.
+#
+# Modes :
+#   ./install.sh          — mode dev : configure WiFi + marque setup-done
+#   ./install.sh factory   — mode factory : pas de WiFi, pas de setup-done
+#                           (pour image à flasher — le portail setup s'activera au boot)
 
 set -euo pipefail
 
@@ -9,6 +14,7 @@ LOG() { echo "[gygeslink-install] $*"; }
 ERR() { echo "[gygeslink-install] ERREUR: $*" >&2; }
 
 REPO_DIR="/opt/gygeslink"
+MODE="${1:-dev}"
 
 if [ "$(id -u)" -ne 0 ]; then
     ERR "Ce script doit être exécuté en root (sudo)."
@@ -20,21 +26,21 @@ if [ ! -f "$REPO_DIR/src/usr/local/bin/gygeslink-network-setup.sh" ]; then
     exit 1
 fi
 
-# ── Demander le WiFi ─────────────────────────────────────────────
-LOG "Configuration du WiFi"
-read -p "SSID WiFi : " WIFI_SSID
-read -p "Mot de passe WiFi : " WIFI_PSK
+# ── WiFi (mode dev uniquement) ────────────────────────────────────
+if [ "$MODE" = "dev" ]; then
+    LOG "Configuration du WiFi (mode dev)"
+    read -p "SSID WiFi : " WIFI_SSID
+    read -p "Mot de passe WiFi : " WIFI_PSK
 
-if [ -z "$WIFI_SSID" ]; then
-    ERR "SSID vide — abandon."
-    exit 1
-fi
+    if [ -z "$WIFI_SSID" ]; then
+        ERR "SSID vide — abandon."
+        exit 1
+    fi
 
-# ── Configurer NetworkManager ────────────────────────────────────
-mkdir -p /etc/NetworkManager/system-connections
+    mkdir -p /etc/NetworkManager/system-connections
 
-NM_CONN_FILE="/etc/NetworkManager/system-connections/GygesLink-WiFi.nmconnection"
-cat > "$NM_CONN_FILE" << EOF
+    NM_CONN_FILE="/etc/NetworkManager/system-connections/GygesLink-WiFi.nmconnection"
+    cat > "$NM_CONN_FILE" << EOF
 [connection]
 id=GygesLink-WiFi
 type=wifi
@@ -55,19 +61,21 @@ method=auto
 [ipv6]
 method=disabled
 EOF
-chmod 600 "$NM_CONN_FILE"
-LOG "Connexion WiFi NM configurée : $WIFI_SSID"
+    chmod 600 "$NM_CONN_FILE"
+    LOG "Connexion WiFi NM configurée : $WIFI_SSID"
 
-# ── Garder wifi.conf pour compatibilité (portail setup) ──────────
-mkdir -p /data/gygeslink
-cat > /data/gygeslink/wifi.conf << EOF
+    mkdir -p /data/gygeslink
+    cat > /data/gygeslink/wifi.conf << EOF
 network={
     ssid="$WIFI_SSID"
     psk="$WIFI_PSK"
     key_mgmt=WPA-PSK
 }
 EOF
-chmod 600 /data/gygeslink/wifi.conf
+    chmod 600 /data/gygeslink/wifi.conf
+else
+    LOG "Mode factory — WiFi configuré via le portail setup au premier boot."
+fi
 
 # ── Overlay dwc2 pour USB gadget ────────────────────────────────
 if [ -f /boot/armbianEnv.txt ]; then
@@ -111,7 +119,13 @@ chmod +x /usr/local/bin/gygeslink-*.sh /usr/local/bin/gygeslink-*.py \
          /usr/local/bin/noise_generator.py 2>/dev/null || true
 
 # ── Setup-done ──────────────────────────────────────────────────
-touch /data/gygeslink/setup-done
+if [ "$MODE" = "dev" ]; then
+    touch /data/gygeslink/setup-done
+    LOG "setup-done créé (mode dev — skip portail)."
+else
+    rm -f /data/gygeslink/setup-done 2>/dev/null || true
+    LOG "setup-done absent (mode factory — portail actif au premier boot)."
+fi
 
 # ── NetworkManager ──────────────────────────────────────────────
 systemctl enable NetworkManager
@@ -124,11 +138,11 @@ systemctl disable dnsmasq 2>/dev/null || true
 systemctl daemon-reload
 systemctl enable gygeslink-usb-gadget.service
 systemctl enable gygeslink-network-setup.service
+systemctl enable gygeslink-setup.service
 systemctl enable gygeslink-tor.service
 systemctl enable gygeslink-iptables-open.service
 systemctl enable gygeslink-jitter.service
 systemctl enable gygeslink-noise.service
-
 systemctl disable gygeslink-led.service 2>/dev/null || true
 systemctl disable gygeslink-button.service 2>/dev/null || true
 

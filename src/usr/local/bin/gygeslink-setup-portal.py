@@ -49,6 +49,7 @@ SETUP_DONE_FILE  = DATA_DIR / "setup-done"
 WG_CONF_FILE     = DATA_DIR / "wg0.conf"
 WG_EXPIRY_FILE   = DATA_DIR / "wg-expiry.txt"
 WIFI_CONF_FILE   = DATA_DIR / "wifi.conf"
+BRIDGES_CONF_FILE = DATA_DIR / "bridges.conf"
 
 # NOTE : endpoint à vérifier avec la documentation officielle Mullvad.
 # L'API publique Mullvad a évolué. Les endpoints possibles incluent :
@@ -312,6 +313,38 @@ HTML_WIFI = HTML_BASE.replace(
 """
 )
 
+HTML_BRIDGES = HTML_BASE.replace(
+    "{% block content %}{% endblock %}",
+    """
+  {% if error %}
+  <div class="alert alert-error">{{ error }}</div>
+  {% endif %}
+  {% if info %}
+  <div class="alert alert-info">{{ info }}</div>
+  {% endif %}
+
+  <h2>Bridges obfs4</h2>
+  <p style="color:#888; font-size:13px; margin-bottom:20px;">
+    Les bridges obfs4 masquent le trafic Tor pour échapper au DPI.<br>
+    Obtenez-les sur <strong>bridges.torproject.org</strong> (3 recommandés).<br>
+    Vous pouvez ignorer cette étape si vous n'êtes pas censuré.
+  </p>
+
+  <form method="post" action="/bridges">
+    <div class="form-group">
+      <label for="bridges">Lignes de bridge (une par ligne)</label>
+      <textarea id="bridges" name="bridges"
+                rows="6" style="width:100%;padding:12px;background:#111;border:1px solid #444;border-radius:6px;color:#e0e0e0;font-size:13px;font-family:monospace;resize:vertical;"
+                placeholder="obfs4 1.2.3.4:443 ABCDEF cert=aBcDeFgH... iat-mode=0
+obfs4 5.6.7.8:443 GHIJKL cert=xYzAbC... iat-mode=0">{{ existing_bridges }}</textarea>
+      <div class="hint">Collez ici les lignes obtenues sur bridges.torproject.org</div>
+    </div>
+    <button type="submit" class="btn-primary">Enregistrer les bridges</button>
+    <button type="submit" name="skip" value="1" class="btn-secondary">Passer cette étape →</button>
+  </form>
+"""
+)
+
 
 # ─────────────────────────────────────────────────────────────────────
 # Génération du certificat SSL (si absent)
@@ -334,6 +367,7 @@ def ensure_ssl_cert() -> None:
             "-days", "365",
             "-nodes",
             "-subj", f"/CN=GygesLink-Setup/O=GygesLink/C=FR",
+            "-addext", "subjectAltName=IP:192.168.100.1",
         ],
         capture_output=True,
         text=True,
@@ -507,11 +541,13 @@ PersistentKeepalive = 25
 @app.route("/", methods=["GET"])
 def index():
     """Page d'accueil du portail.
-    Si les credentials WiFi ne sont pas encore configurés, affiche le
-    formulaire WiFi en premier. Sinon, affiche le choix du tier.
+    Flux : WiFi → Bridges obfs4 → Choix du tier.
     """
     if not WIFI_CONF_FILE.exists():
         return render_template_string(HTML_WIFI, error=None)
+    if not BRIDGES_CONF_FILE.exists():
+        existing = ""
+        return render_template_string(HTML_BRIDGES, error=None, info=None, existing_bridges=existing)
     return render_template_string(HTML_HOME, error=None)
 
 
@@ -555,6 +591,55 @@ network={{
     WIFI_CONF_FILE.chmod(0o600)   # Credentials — lecture seule pour root
 
     logger.info("WiFi configuré : SSID=%r", ssid)
+
+    existing = ""
+    return render_template_string(HTML_BRIDGES, error=None, info=None, existing_bridges=existing)
+
+
+@app.route("/bridges", methods=["POST"])
+@limiter.limit("10 per minute")
+def bridges():
+    """Enregistre les bridges obfs4 dans /data/gygeslink/bridges.conf."""
+    if request.form.get("skip"):
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        BRIDGES_CONF_FILE.touch()
+        BRIDGES_CONF_FILE.chmod(0o600)
+        logger.info("Bridges obfs4 : ignoré par l'utilisateur.")
+        return render_template_string(HTML_HOME, error=None)
+
+    raw = request.form.get("bridges", "").strip()
+
+    if not raw:
+        return render_template_string(HTML_BRIDGES, error="Collez au moins une ligne de bridge obfs4.", info=None, existing_bridges="")
+
+    lines = [l.strip() for l in raw.splitlines() if l.strip()]
+    valid = []
+    for line in lines:
+        # Retirer le préfixe "Bridge " si l'utilisateur a copié la ligne complète
+        if line.lower().startswith("bridge "):
+            line = line[7:]
+        # Validation basique : doit commencer par obfs4 + IP:PORT
+        if not re.match(r'^obfs4\s+\d{1,3}(\.\d{1,3}){3}:\d{1,5}\s+\S+', line):
+            continue
+        # Rejeter les caractères de contrôle
+        if re.search(r'[\r\n\x00]', line):
+            continue
+        valid.append(f"Bridge {line}")
+
+    if not valid:
+        return render_template_string(
+            HTML_BRIDGES,
+            error="Aucune bridge valide détectée. Format attendu : obfs4 IP:PORT FINGERPRINT cert=...",
+            info=None,
+            existing_bridges=raw,
+        )
+
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    content = "# GygesLink — Bridges obfs4 (configurées via portail)\n" + "\n".join(valid) + "\n"
+    BRIDGES_CONF_FILE.write_text(content)
+    BRIDGES_CONF_FILE.chmod(0o600)
+
+    logger.info("Bridges obfs4 configurées : %d bridge(s).", len(valid))
 
     return render_template_string(HTML_HOME, error=None)
 
