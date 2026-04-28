@@ -146,13 +146,18 @@ systemctl enable gygeslink-noise.service
 systemctl disable gygeslink-led.service 2>/dev/null || true
 systemctl disable gygeslink-button.service 2>/dev/null || true
 
+# ── Supprimer les connexions WiFi NM de l'install Armbian ────────
+nmcli -t -f TYPE,NAME connection show 2>/dev/null | grep '802-11-wireless' | cut -d: -f2- | while read -r name; do
+    nmcli connection delete "$name" 2>/dev/null || true
+done
+LOG "Connexions WiFi Armbian supprimées."
+
 LOG "============================================"
 LOG "Installation terminée."
-LOG "Le Pi va redémarrer dans 5 secondes."
-LOG "Après le reboot :"
-LOG "  - SSH : ssh root@<IP_du_Pi>"
-LOG "  - USB : brancher le câble USB-C au PC"
+LOG "Le Pi va s'éteindre."
+LOG "Débranchez et rebranchez le câble USB-C sur votre PC."
+LOG "Le portail setup s'ouvrira automatiquement."
 LOG "============================================"
 
 sleep 5
-reboot
+poweroff
