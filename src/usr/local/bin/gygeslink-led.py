@@ -4,16 +4,19 @@ GygesLink — Daemon LED RGB (Orange Pi Zero 2W)
 
 Indique l'état de protection du boîtier en temps réel via une LED RGB.
 
-Câblage GPIO (Orange Pi Zero 2W — à confirmer avec le pinout physique) :
-  TODO: vérifier les numéros de ligne gpiod avec `gpioinfo` sur le boîtier
-  Commandes de vérification :
-    gpiodetect           # lister les chips disponibles
-    gpioinfo gpiochip0   # lister toutes les lignes du chip
+Câblage GPIO (Orange Pi Zero 2W — Allwinner H618, header 26-pin) :
+  Vérification obligatoire avant déploiement :
+    gpiodetect                          # lister les chips
+    gpioinfo gpiochip0 | grep -i "PH"   # vérifier les lignes PH
 
-  GPIO_R → Pin 11 (GPIO_X_0, ligne 12) + résistance 330Ω
-  GPIO_G → Pin 13 (GPIO_X_2, ligne 13) + résistance 330Ω
-  GPIO_B → Pin 15 (GPIO_X_4, ligne 14) + résistance 330Ω
+  GPIO_R → Pin 11 (PH9)  + résistance 100Ω → anode rouge   (Vf≈2.0V, If≈13mA)
+  GPIO_G → Pin 13 (PH11) + résistance 100Ω → anode verte   (Vf≈2.2V, If≈11mA)
+  GPIO_B → Pin 15 (PH12) + résistance 27Ω  → anode bleue   (Vf≈3.0V, If≈11mA)
   GND    → cathode commune (Pin 6, 9, 14, 20, 25)
+  NOTE : H618 GPIO = 3.3V. Les résistances 330Ω sont pour 5V (inadaptées ici).
+
+  Si les numéros de ligne gpiod diffèrent des valeurs par défaut,
+  créer /data/gygeslink/gpio.conf avec les bonnes valeurs (voir ci-dessous).
 
 États :
   Bleu clignotant rapide  (0.3s ON / 0.3s OFF)  → Mode setup (premier boot)
@@ -24,7 +27,7 @@ Câblage GPIO (Orange Pi Zero 2W — à confirmer avec le pinout physique) :
 
 Logique de décision (par priorité) :
   1. setup-done absent                  → bleu clignotant
-  2. iptables-open inactif              → rouge clignotant
+  2. Tor inactif OU iptables-open inactif → rouge clignotant
   3. couche manquante (noise/jitter/wg) → orange fixe
   4. voucher Mullvad expire bientôt     → orange clignotant lent
   5. tout OK                            → vert fixe
@@ -46,16 +49,46 @@ except ImportError:
 # ─────────────────────────────────────────────────────────────────────
 # Configuration GPIO (Orange Pi Zero 2W — Allwinner H618)
 # ─────────────────────────────────────────────────────────────────────
-# Orange Pi Zero 2W (Allwinner H618) — gpiochip1 = 288 lignes
-# Pinout GPIO physique : broches du header 26-pin
-#   Pin 11 (GPIO_X_0) = ligne 12  → LED Rouge
-#   Pin 13 (GPIO_X_2) = ligne 13  → LED Vert
-#   Pin 15 (GPIO_X_4) = ligne 14  → LED Bleu
-#   Pin  7 (GPIO_X_6) = ligne 15  → Bouton
-GPIOCHIP = "gpiochip1"
-GPIO_R   = 12
-GPIO_G   = 13
-GPIO_B   = 14
+# H618 GPIO Port H : base = 7 × 32 = 224 dans gpiod (gpiochip0)
+# Header 26-pin → correspondances physiques :
+#   Pin 11 = PH9  = ligne 224+9  = 233  → LED Rouge
+#   Pin 13 = PH11 = ligne 224+11 = 235  → LED Vert
+#   Pin 15 = PH12 = ligne 224+12 = 236  → LED Bleu
+#   Pin  7 = PH14 = ligne 224+14 = 238  → Bouton
+#
+# VALEURS PAR DÉFAUT — à confirmer avec `gpioinfo gpiochip0` sur le Pi.
+# Si différentes, créer /data/gygeslink/gpio.conf :
+#   GPIOCHIP=gpiochip0
+#   GPIO_R=233
+#   GPIO_G=235
+#   GPIO_B=236
+#   BUTTON_LINE=238
+GPIOCHIP = "gpiochip0"
+GPIO_R   = 233
+GPIO_G   = 235
+GPIO_B   = 236
+
+GPIO_CONF_FILE = Path("/data/gygeslink/gpio.conf")
+
+
+def _load_gpio_conf() -> None:
+    global GPIOCHIP, GPIO_R, GPIO_G, GPIO_B
+    if not GPIO_CONF_FILE.exists():
+        return
+    mapping = {"GPIOCHIP": GPIOCHIP, "GPIO_R": GPIO_R, "GPIO_G": GPIO_G, "GPIO_B": GPIO_B}
+    for line in GPIO_CONF_FILE.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        key, _, val = line.partition("=")
+        key = key.strip()
+        if key in mapping:
+            mapping[key] = int(val.strip()) if key != "GPIOCHIP" else val.strip()
+    GPIOCHIP = mapping["GPIOCHIP"]
+    GPIO_R = mapping["GPIO_R"]
+    GPIO_G = mapping["GPIO_G"]
+    GPIO_B = mapping["GPIO_B"]
+
 
 SETUP_DONE_FILE  = Path("/data/gygeslink/setup-done")
 WG_CONF_FILE     = Path("/data/gygeslink/wg0.conf")
@@ -152,10 +185,10 @@ def get_system_state() -> str:
     if not SETUP_DONE_FILE.exists():
         return "setup"
 
-    if not service_active("gygeslink-tor"):
-        return "error"
+    tor_ok = service_active("gygeslink-tor")
+    iptables_ok = service_active("gygeslink-iptables-open")
 
-    if not service_active("gygeslink-iptables-open"):
+    if not tor_ok or not iptables_ok:
         return "error"
 
     noise_ok  = service_active("gygeslink-noise")
@@ -247,6 +280,8 @@ def led_loop() -> None:
 # ─────────────────────────────────────────────────────────────────────
 
 def main() -> None:
+    _load_gpio_conf()
+
     if not GPIO_AVAILABLE:
         logger.warning("gpiod non disponible — mode simulation (pas de LED physique).")
         logger.warning("Installer : apt install python3-libgpiod")

@@ -2,14 +2,14 @@
 """
 GygesLink — Daemon de surveillance du bouton GPIO (Orange Pi Zero 2W)
 
-Câblage :
-  TODO: vérifier le numéro de ligne gpiod avec `gpioinfo` sur le boîtier
-  Commandes de vérification :
-    gpiodetect           # lister les chips disponibles
-    gpioinfo gpiochip0   # lister toutes les lignes
+Câblage (Orange Pi Zero 2W — Allwinner H618, header 26-pin) :
+  Vérification obligatoire avant déploiement :
+    gpiodetect                          # lister les chips
+    gpioinfo gpiochip0 | grep -i "PH"   # vérifier les lignes PH
 
-  Bouton connecté entre le pin GPIO (Pin 7, ligne 15) et GND.
-  HIGH = bouton relâché, LOW = bouton pressé.
+  Bouton connecté entre Pin 7 (PH14) et GND (Pin 9).
+  Pull-up interne activée : HIGH = relâché, LOW = pressé.
+  Debounce logiciel : 50ms de stabilité requise.
 
 Comportement :
   Maintien 5 secondes → supprime /data/gygeslink/setup-done → reboot
@@ -37,14 +37,21 @@ except ImportError:
 # ─────────────────────────────────────────────────────────────────────
 # Configuration GPIO (Orange Pi Zero 2W — Allwinner H618)
 # ─────────────────────────────────────────────────────────────────────
-# Orange Pi Zero 2W (Allwinner H618) — gpiochip1 = 288 lignes
-# Pinout GPIO physique : broches du header 26-pin
-#   Pin  7 (GPIO_X_6) = ligne 15  → Bouton
-GPIOCHIP    = "gpiochip1"
-BUTTON_LINE = 15
+# H618 GPIO Port H : base = 7 × 32 = 224 dans gpiod (gpiochip0)
+# Header 26-pin → correspondances physiques :
+#   Pin  7 = PH14 = ligne 224+14 = 238  → Bouton
+#
+# VALEURS PAR DÉFAUT — à confirmer avec `gpioinfo gpiochip0` sur le Pi.
+# Si différentes, créer /data/gygeslink/gpio.conf :
+#   GPIOCHIP=gpiochip0
+#   BUTTON_LINE=238
+GPIOCHIP    = "gpiochip0"
+BUTTON_LINE = 238
 
-HOLD_DURATION   = 5.0   # secondes de maintien pour déclencher le reset
-POLL_INTERVAL   = 0.1   # intervalle de polling (100ms)
+GPIO_CONF_FILE  = Path("/data/gygeslink/gpio.conf")
+HOLD_DURATION   = 5.0
+DEBOUNCE_MS     = 0.05
+POLL_INTERVAL   = 0.02
 SETUP_DONE_FILE = Path("/data/gygeslink/setup-done")
 
 # ─────────────────────────────────────────────────────────────────────
@@ -66,25 +73,56 @@ logger = logging.getLogger("button")
 
 WIFI_CONF_FILE = Path("/data/gygeslink/wifi.conf")
 
+
+def _load_gpio_conf() -> None:
+    global GPIOCHIP, BUTTON_LINE
+    if not GPIO_CONF_FILE.exists():
+        return
+    mapping = {"GPIOCHIP": GPIOCHIP, "BUTTON_LINE": BUTTON_LINE}
+    for line in GPIO_CONF_FILE.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        key, _, val = line.partition("=")
+        key = key.strip()
+        if key in mapping:
+            mapping[key] = int(val.strip()) if key != "GPIOCHIP" else val.strip()
+    GPIOCHIP = mapping["GPIOCHIP"]
+    BUTTON_LINE = mapping["BUTTON_LINE"]
+
+
+def _debounced_read(line, expected: int, stability: float = DEBOUNCE_MS) -> bool:
+    start = time.monotonic()
+    while time.monotonic() - start < stability:
+        if line.get_value() != expected:
+            return False
+        time.sleep(0.005)
+    return True
+
 def trigger_setup_reset() -> None:
-    """Supprime le flag setup-done et les credentials WiFi, redémarre en mode setup."""
-    logger.warning("Maintien 5s détecté — reset vers mode setup.")
+    """Supprime toute config utilisateur, redémarre en mode setup (factory reset)."""
+    logger.warning("Maintien 5s détecté — factory reset.")
 
-    if SETUP_DONE_FILE.exists():
-        try:
-            SETUP_DONE_FILE.unlink()
-            logger.info("setup-done supprimé.")
-        except OSError as e:
-            logger.error("Impossible de supprimer setup-done : %s", e)
-    else:
-        logger.info("setup-done déjà absent.")
+    files_to_delete = [
+        SETUP_DONE_FILE,
+        WIFI_CONF_FILE,
+        Path("/etc/NetworkManager/system-connections/GygesLink-WiFi.nmconnection"),
+        Path("/data/gygeslink/bridges.conf"),
+        Path("/data/gygeslink/wg0.conf"),
+        Path("/data/gygeslink/wg-expiry.txt"),
+    ]
 
-    if WIFI_CONF_FILE.exists():
-        try:
-            WIFI_CONF_FILE.unlink()
-            logger.info("wifi.conf supprimé — reconfiguration WiFi requise.")
-        except OSError as e:
-            logger.error("Impossible de supprimer wifi.conf : %s", e)
+    for f in files_to_delete:
+        if f.exists():
+            try:
+                f.unlink()
+                logger.info("%s supprimé.", f)
+            except OSError as e:
+                logger.error("Impossible de supprimer %s : %s", f, e)
+
+    # Arrêter WireGuard si actif
+    subprocess.run(["wg-quick", "down", "wg0"], check=False,
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     logger.info("Reboot dans 1 seconde...")
     time.sleep(1)
@@ -117,29 +155,31 @@ def watch_button() -> None:
     try:
         while True:
             if line.get_value() == 1:
-                # Bouton relâché (pull-up HIGH)
                 time.sleep(POLL_INTERVAL)
                 continue
 
-            # ── Bouton pressé (LOW) ───────────────────────────────────
-            press_time = time.time()
-            logger.debug("Bouton pressé, décompte 5s...")
+            # ── Potentiel appui : vérifier avec debounce ──────────
+            if not _debounced_read(line, 0):
+                continue
 
-            while line.get_value() == 0:
-                held = time.time() - press_time
+            press_time = time.monotonic()
+            logger.info("Bouton pressé, décompte %.0fs...", HOLD_DURATION)
 
+            while True:
+                if line.get_value() == 1:
+                    if not _debounced_read(line, 1):
+                        continue
+                    held = time.monotonic() - press_time
+                    logger.info("Bouton relâché après %.1fs — ignoré.", held)
+                    break
+
+                held = time.monotonic() - press_time
                 if held >= HOLD_DURATION:
                     trigger_setup_reset()
-                    # trigger_setup_reset() reboot — on n'arrive pas ici
                     logger.error("Reboot non déclenché — vérifier systemctl.")
                     return
 
                 time.sleep(POLL_INTERVAL)
-
-            # Bouton relâché avant 5s
-            held = time.time() - press_time
-            if held >= 0.05:
-                logger.debug("Appui court (%.1fs) — ignoré.", held)
 
     except KeyboardInterrupt:
         logger.info("Arrêt du daemon bouton.")
@@ -153,6 +193,7 @@ def watch_button() -> None:
 # ─────────────────────────────────────────────────────────────────────
 
 def main() -> None:
+    _load_gpio_conf()
     logger.info("GygesLink button daemon démarrage...")
     watch_button()
 
