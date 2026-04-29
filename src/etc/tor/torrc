@@ -37,6 +37,7 @@ SocksPort 127.0.0.1:9050
 # (bootstrap, circuits, new-identity). Authentification par cookie.
 ControlPort 127.0.0.1:9051
 CookieAuthentication 1
+CookieAuthFile /var/lib/tor/control_auth_cookie
 
 # ── TransPort — proxy transparent TCP ────────────────────────────────
 # Écoute sur 192.168.100.1:9040 (l'IP du Pi côté PC).

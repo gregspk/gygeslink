@@ -41,7 +41,11 @@ API_PORT = 4430
 
 TOR_CONTROL_HOST = "127.0.0.1"
 TOR_CONTROL_PORT = 9051
-TOR_COOKIE_PATH = "/var/run/tor/control.authcookie"
+TOR_COOKIE_PATHS = [
+    "/var/lib/tor/control_auth_cookie",
+    "/var/run/tor/control.authcookie",
+    "/run/tor/control.authcookie",
+]
 
 logging.basicConfig(
     level=logging.INFO,
@@ -69,13 +73,17 @@ def _json_error(error: str, message: str, status: int = 400) -> tuple:
 
 
 def _tor_cookie_auth() -> str:
-    try:
-        with open(TOR_COOKIE_PATH, "rb") as f:
-            cookie = f.read()
-        return cookie.hex()
-    except (OSError, IOError):
-        logger.warning("Tor cookie not found at %s", TOR_COOKIE_PATH)
-        return ""
+    for path in TOR_COOKIE_PATHS:
+        try:
+            with open(path, "rb") as f:
+                cookie = f.read()
+            if cookie:
+                logger.info("Tor cookie found at %s", path)
+                return cookie.hex()
+        except (OSError, IOError):
+            continue
+    logger.warning("Tor cookie not found in any path")
+    return ""
 
 
 def _tor_command(cmd: str) -> str:
