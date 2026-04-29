@@ -69,11 +69,13 @@ def _json_error(error: str, message: str, status: int = 400) -> tuple:
 
 
 def _tor_cookie_auth() -> str:
-    if not os.path.exists(TOR_COOKIE_PATH):
+    try:
+        with open(TOR_COOKIE_PATH, "rb") as f:
+            cookie = f.read()
+        return cookie.hex()
+    except (OSError, IOError):
+        logger.warning("Tor cookie not found at %s", TOR_COOKIE_PATH)
         return ""
-    with open(TOR_COOKIE_PATH, "rb") as f:
-        cookie = f.read()
-    return cookie.hex()
 
 
 def _tor_command(cmd: str) -> str:
@@ -84,7 +86,10 @@ def _tor_command(cmd: str) -> str:
         cookie_hex = _tor_cookie_auth()
         if cookie_hex:
             s.sendall(f'AUTHENTICATE "{cookie_hex}"\r\n'.encode())
-            s.recv(1024)
+            auth_resp = s.recv(1024).decode(errors="replace")
+            if "250" not in auth_resp:
+                logger.error("Tor AUTHENTICATE failed: %s", auth_resp.strip())
+                return ""
         s.sendall(f"{cmd}\r\n".encode())
         resp = b""
         while True:
@@ -92,7 +97,7 @@ def _tor_command(cmd: str) -> str:
             if not chunk:
                 break
             resp += chunk
-            if b"\r\n" in resp:
+            if b"250 " in resp or b"5" in resp[:3]:
                 break
         return resp.decode(errors="replace")
     except (socket.error, socket.timeout, OSError) as e:
