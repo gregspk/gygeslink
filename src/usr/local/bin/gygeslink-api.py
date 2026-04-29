@@ -572,14 +572,13 @@ def api_tor_circuit():
             ["tail", "-100", "/var/log/tor/notices.log"],
             capture_output=True, text=True, timeout=5,
         )
-        circuits = []
+        has_circuit = False
         for line in result.stdout.splitlines():
-            if "Tor has built a circuit" in line or "Bootstrapped 100" in line:
-                circuits.append({"status": "BUILT", "path": []})
-        built = [c for c in circuits if c.get("status") == "BUILT"]
+            if "Bootstrapped 100%" in line:
+                has_circuit = True
         return jsonify({
-            "status": "ok" if built else "no_active_circuit",
-            "circuit": built[-1] if built else None,
+            "status": "ok" if has_circuit else "no_active_circuit",
+            "circuit": [{"status": "BUILT", "path": []}] if has_circuit else None,
         })
     except Exception:
         return jsonify({"status": "no_active_circuit", "circuit": None})
