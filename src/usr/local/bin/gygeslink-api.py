@@ -567,21 +567,33 @@ def api_logs():
 
 @app.route("/api/tor/circuit", methods=["GET"])
 def api_tor_circuit():
-    circuits = _get_tor_circuits()
-    built = [c for c in circuits if c.get("status") == "BUILT"]
-    return jsonify({
-        "status": "ok" if built else "no_active_circuit",
-        "circuit": built[0] if built else (circuits[0] if circuits else None),
-    })
+    try:
+        result = subprocess.run(
+            ["tail", "-100", "/var/log/tor/notices.log"],
+            capture_output=True, text=True, timeout=5,
+        )
+        circuits = []
+        for line in result.stdout.splitlines():
+            if "Tor has built a circuit" in line or "Bootstrapped 100" in line:
+                circuits.append({"status": "BUILT", "path": []})
+        built = [c for c in circuits if c.get("status") == "BUILT"]
+        return jsonify({
+            "status": "ok" if built else "no_active_circuit",
+            "circuit": built[-1] if built else None,
+        })
+    except Exception:
+        return jsonify({"status": "no_active_circuit", "circuit": None})
 
 
 @app.route("/api/tor/new-identity", methods=["POST"])
 @limiter.limit("6 per minute")
 def api_tor_new_identity():
-    resp = _tor_command("SIGNAL NEWNYM")
-    if "250" in resp:
-        return _json_ok(message="Nouveau circuit Tor demandé.")
-    return _json_error("tor_error", "Impossible de demander un nouveau circuit.", 503)
+    try:
+        subprocess.run(["systemctl", "restart", "gygeslink-tor"], capture_output=True, timeout=10)
+        return _json_ok(message="Nouveau circuit Tor en cours de construction.")
+    except Exception as e:
+        logger.error("Tor restart failed: %s", e)
+        return _json_error("tor_error", "Impossible de redémarrer Tor.", 503)
 
 
 @app.route("/api/reboot", methods=["POST"])
