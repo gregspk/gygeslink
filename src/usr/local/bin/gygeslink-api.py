@@ -166,10 +166,26 @@ def _is_wireguard_active() -> bool:
 
 def _is_wifi_connected() -> bool:
     result = subprocess.run(
-        ["ip", "addr", "show", "wlan0"],
+        ["nmcli", "-t", "-f", "STATE", "dev", "show", "wlan0"],
         capture_output=True, text=True,
     )
-    return "inet " in result.stdout
+    for line in result.stdout.strip().splitlines():
+        if line.strip() == "STATE=100" or line.strip() == "STATE=70":
+            return True
+        if "STATE=" in line:
+            state = line.split("=", 1)[1].strip()
+            if state in ("100", "70"):
+                return True
+    result2 = subprocess.run(
+        ["ip", "route", "list", "dev", "wlan0"],
+        capture_output=True, text=True,
+    )
+    has_ip = "inet " in subprocess.run(
+        ["ip", "addr", "show", "wlan0"],
+        capture_output=True, text=True,
+    ).stdout
+    has_default = "default" in result2.stdout
+    return has_ip and has_default
 
 
 def _get_wifi_ssid() -> str:
@@ -180,6 +196,8 @@ def _get_wifi_ssid() -> str:
     for line in result.stdout.strip().splitlines():
         if line.startswith("yes:"):
             return line.split(":", 1)[1]
+    if not _is_wifi_connected():
+        return ""
     if WIFI_CONF_FILE.exists():
         try:
             with open(WIFI_CONF_FILE, "r") as f:
@@ -374,7 +392,11 @@ def api_bridges():
 def api_setup():
     data = request.get_json(silent=True) or {}
     tier = str(data.get("tier", "1"))
-    account = data.get("account", "").strip()
+    account = data.get("account") or ""
+    if isinstance(account, str):
+        account = account.strip()
+    else:
+        account = ""
 
     if tier == "1":
         DATA_DIR.mkdir(parents=True, exist_ok=True)

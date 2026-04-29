@@ -71,15 +71,24 @@ if [ -n "$USB_IF" ]; then
     killall dnsmasq 2>/dev/null || true
     sleep 1
     if [ -f /etc/dnsmasq.d/gygeslink-usb0.conf ]; then
-        # Utiliser le fichier de conf mais overridé l'interface
-        dnsmasq -u dnsmasq -p 0 \
-            -i "$USB_IF" \
-            -I lo \
-            -F "192.168.100.100,192.168.100.110,255.255.255.0,12h" \
-            -O "3,192.168.100.1" \
-            -O "6,192.168.100.1" \
-            2>/dev/null || true
-        LOG "dnsmasq lancé sur $USB_IF — DHCP actif."
+        if [ -f /data/gygeslink/setup-done ]; then
+            dnsmasq -u dnsmasq -p 0 \
+                -i "$USB_IF" \
+                -I lo \
+                -F "192.168.100.100,192.168.100.110,255.255.255.0,12h" \
+                -O "3,192.168.100.1" \
+                -O "6,192.168.100.1" \
+                2>/dev/null || true
+            LOG "dnsmasq lancé sur $USB_IF — DHCP actif + gateway (Tor en service)."
+        else
+            dnsmasq -u dnsmasq -p 0 \
+                -i "$USB_IF" \
+                -I lo \
+                -F "192.168.100.100,192.168.100.110,255.255.255.0,12h" \
+                -O "6,192.168.100.1" \
+                2>/dev/null || true
+            LOG "dnsmasq lancé sur $USB_IF — DHCP actif SANS gateway (mode setup, PC garde son WiFi)."
+        fi
     fi
 fi
 
