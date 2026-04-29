@@ -130,17 +130,6 @@ fi
 
 LOG "iptables fail-close actif."
 
-# ── Écrire le statut du tier ──────────────────────────────────────
-# tor-prestart.sh attend ce fichier. WireGuard l'écrit s'il est actif,
-# mais en Tier 1 il n'existe pas → Tor bloque au prestart.
-if [ -f /data/gygeslink/wg0.conf ]; then
-    echo "TIER=2" > /run/gygeslink-tier.status
-    LOG "Tier détecté : 2 (WireGuard présent)."
-else
-    echo "TIER=1" > /run/gygeslink-tier.status
-    LOG "Tier détecté : 1 (Classic, pas de WireGuard)."
-fi
-
 # ── Si l'interface USB n'est pas usb0, ajouter les règles manquantes ─
 if [ -n "$USB_IF" ] && [ "$USB_IF" != "usb0" ]; then
     LOG "Ajout des règles iptables pour $USB_IF..."
@@ -153,9 +142,13 @@ fi
 
 # ── Mode setup : ouvrir le portail HTTPS si nécessaire ──────────
 if [ ! -f /data/gygeslink/setup-done ]; then
-    LOG "Mode setup : ouverture portail HTTPS."
-    iptables -I INPUT -i "$USB_IF" -p tcp --dport 443 -j ACCEPT
-    iptables -I OUTPUT -o "$USB_IF" -p tcp --sport 443 -j ACCEPT
+    if [ -n "$USB_IF" ]; then
+        LOG "Mode setup : ouverture portail HTTPS."
+        iptables -I INPUT -i "$USB_IF" -p tcp --dport 443 -j ACCEPT
+        iptables -I OUTPUT -o "$USB_IF" -p tcp --sport 443 -j ACCEPT
+    else
+        ERR "Mode setup mais pas d'interface USB — portail inaccessible."
+    fi
 fi
 
 LOG "Configuration réseau terminée."

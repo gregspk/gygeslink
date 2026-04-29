@@ -602,7 +602,7 @@ def bridges():
     """Enregistre les bridges obfs4 dans /data/gygeslink/bridges.conf."""
     if request.form.get("skip"):
         DATA_DIR.mkdir(parents=True, exist_ok=True)
-        BRIDGES_CONF_FILE.touch()
+        BRIDGES_CONF_FILE.write_text("# GygesLink — Bridges obfs4\n")
         BRIDGES_CONF_FILE.chmod(0o644)
         logger.info("Bridges obfs4 : ignoré par l'utilisateur.")
         return render_template_string(HTML_HOME, error=None)

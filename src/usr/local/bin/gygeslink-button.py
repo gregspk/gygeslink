@@ -107,7 +107,6 @@ def trigger_setup_reset() -> None:
         SETUP_DONE_FILE,
         WIFI_CONF_FILE,
         Path("/etc/NetworkManager/system-connections/GygesLink-WiFi.nmconnection"),
-        Path("/data/gygeslink/bridges.conf"),
         Path("/data/gygeslink/wg0.conf"),
         Path("/data/gygeslink/wg-expiry.txt"),
     ]
@@ -119,6 +118,12 @@ def trigger_setup_reset() -> None:
                 logger.info("%s supprimé.", f)
             except OSError as e:
                 logger.error("Impossible de supprimer %s : %s", f, e)
+
+    # bridges.conf MUST exist (even empty) — torrc %include crashes if file absent
+    bridges = Path("/data/gygeslink/bridges.conf")
+    bridges.write_text("# GygesLink — Bridges obfs4\n")
+    bridges.chmod(0o644)
+    logger.info("bridges.conf réinitialisé (vide).")
 
     # Arrêter WireGuard si actif
     subprocess.run(["wg-quick", "down", "wg0"], check=False,

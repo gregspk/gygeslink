@@ -1,8 +1,10 @@
 [Unit]
 Description=GygesLink WireGuard — détection tier et montage Mullvad
-# Ne démarre que si une config WireGuard existe (/data/gygeslink/wg0.conf)
-# ConditionPathExists évite toute tentative inutile en mode Classic
-ConditionPathExists=/data/gygeslink/wg0.conf
+# Ce service tourne TOUJOURS, même en Tier 1.
+# Le script wireguard-check.sh détecte si wg0.conf existe et monte wg0
+# si applicable. En Tier 1, il écrit TIER=1 et exit 0.
+# NE PAS remettre ConditionPathExists : ça empêcherait le fichier
+# tier.status d'être écrit en Tier 1, bloquant Tor au prestart.
 After=gygeslink-network-setup.service
 Wants=gygeslink-network-setup.service
 
@@ -11,8 +13,7 @@ Type=oneshot
 RemainAfterExit=yes
 ExecStart=/usr/local/bin/gygeslink-wireguard-check.sh
 
-# Si le script échoue (cas imprévu), on écrit Tier 1 manuellement
-# pour ne pas bloquer le démarrage de Tor
+# Filesystem fallback si le script échoue
 ExecStartPost=/bin/bash -c \
     'test -f /run/gygeslink-tier.status || echo "TIER=1" > /run/gygeslink-tier.status'
 

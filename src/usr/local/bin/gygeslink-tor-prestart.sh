@@ -2,7 +2,7 @@
 # GygesLink — Configuration de Tor avant démarrage
 # Exécuté en ExecStartPre par gygeslink-tor.service
 #
-# Lit /tmp/gygeslink-tier.status (écrit par gygeslink-wireguard-check.sh)
+# Lit /run/gygeslink-tier.status (écrit par gygeslink-wireguard-check.sh)
 # et configure torrc en conséquence :
 #
 #   TIER=2 → ajoute "OutboundBindInterface wg0" dans torrc

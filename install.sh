@@ -144,8 +144,17 @@ systemctl enable gygeslink-iptables-open.service
 systemctl enable gygeslink-jitter.service
 systemctl enable gygeslink-noise.service
 systemctl enable gygeslink-api.service
+systemctl enable gygeslink-wireguard.service
 systemctl disable gygeslink-led.service 2>/dev/null || true
 systemctl disable gygeslink-button.service 2>/dev/null || true
+
+# ── Symlink WireGuard ────────────────────────────────────────────
+# wg-quick cherche /etc/wireguard/wg0.conf — le fichier réel est sur
+# la partition persistante /data. Le symlink permet à wg-quick de
+# le trouver sans copier la clé privée sur le rootfs.
+mkdir -p /etc/wireguard
+ln -sf /data/gygeslink/wg0.conf /etc/wireguard/wg0.conf
+LOG "Symlink WireGuard créé : /etc/wireguard/wg0.conf → /data/gygeslink/wg0.conf"
 
 # ── Supprimer les connexions WiFi NM de l'install Armbian ────────
 nmcli -t -f TYPE,NAME connection show 2>/dev/null | grep '802-11-wireless' | cut -d: -f2- | while read -r name; do

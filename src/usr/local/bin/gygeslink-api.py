@@ -387,7 +387,7 @@ def api_bridges():
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     content = "# GygesLink — Bridges obfs4 (API)\n" + "\n".join(valid) + "\n"
     BRIDGES_CONF_FILE.write_text(content)
-    BRIDGES_CONF_FILE.chmod(0o600)
+    BRIDGES_CONF_FILE.chmod(BRIDGES_CONF_PERM)
 
     logger.info("Bridges configurées via API : %d bridge(s).", len(valid))
     return _json_ok(message=f"{len(valid)} bridge(s) configurée(s).")
@@ -493,11 +493,15 @@ def api_factory_reset():
         WIFI_CONF_FILE,
         WG_CONF_FILE,
         WG_EXPIRY_FILE,
-        BRIDGES_CONF_FILE,
     ]
     for f in files_to_delete:
         if f.exists():
             f.unlink()
+
+    # bridges.conf MUST exist (even empty) — torrc %include will crash if absent
+    # Write an empty placeholder instead of deleting
+    BRIDGES_CONF_FILE.write_text("# GygesLink — Bridges obfs4\n")
+    BRIDGES_CONF_FILE.chmod(BRIDGES_CONF_PERM)
 
     nm_result = subprocess.run(
         ["nmcli", "-t", "-f", "TYPE,UUID", "connection", "show"],

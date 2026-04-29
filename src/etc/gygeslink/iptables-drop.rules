@@ -51,6 +51,10 @@
 # le handshake avant le démarrage de Tor.
 -A OUTPUT -o wlan0 -p udp --dport 51820 -j ACCEPT
 
+# ═══════════════════════════════════════════════════════════════════
+# PRODUCTION : supprimer toutes les règles ci-dessous avant déploiement
+# ═══════════════════════════════════════════════════════════════════
+
 # SSH entrant sur wlan0 (debug uniquement — RETIRER EN PRODUCTION)
 -A INPUT -i wlan0 -p tcp --dport 22 -j ACCEPT
 -A OUTPUT -o wlan0 -p tcp --sport 22 -j ACCEPT

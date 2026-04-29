@@ -19,8 +19,7 @@
 # Tor résout les DNS de façon anonyme — aucun DNS leak vers le FAI
 -A PREROUTING -i usb0 -p udp --dport 53 -j REDIRECT --to-ports 5353
 
-# Exempter les ports locaux (portail + API) de la redirection TCP vers Tor
--A PREROUTING -i usb0 -p tcp --dport 443 -j RETURN
+# Exempter le port de l'API desktop de la redirection TCP vers Tor
 -A PREROUTING -i usb0 -p tcp --dport 4430 -j RETURN
 
 # Rediriger tout le trafic TCP du PC vers le TransPort de Tor
@@ -92,6 +91,10 @@ COMMIT
 # Tor daemon → bridges/relays (wlan0 en Tier 1, wg0 en Tier 2)
 -A OUTPUT -m owner --uid-owner debian-tor -j ACCEPT
 
+# ═══════════════════════════════════════════════════════════════════
+# PRODUCTION : supprimer toutes les règles ci-dessous avant déploiement
+# ═══════════════════════════════════════════════════════════════════
+
 # SSH entrant sur wlan0 (debug uniquement — RETIRER EN PRODUCTION)
 -A INPUT -i wlan0 -p tcp --dport 22 -j ACCEPT
 -A OUTPUT -o wlan0 -p tcp --sport 22 -j ACCEPT
@@ -119,9 +122,5 @@ COMMIT
 # API REST pour l'app desktop (port 4430, usb0 uniquement)
 -A INPUT -i usb0 -p tcp --dport 4430 -j ACCEPT
 -A OUTPUT -o usb0 -p tcp --sport 4430 -j ACCEPT
-
-# Portail setup HTTPS (port 443, usb0 uniquement — actif si pas setup-done)
--A INPUT -i usb0 -p tcp --dport 443 -j ACCEPT
--A OUTPUT -o usb0 -p tcp --sport 443 -j ACCEPT
 
 COMMIT
