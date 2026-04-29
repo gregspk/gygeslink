@@ -94,7 +94,7 @@ def _tor_command(cmd: str) -> str:
         cookie_hex = _tor_cookie_auth()
         logger.info("Tor control: cookie_len=%d cmd=%s", len(cookie_hex), cmd)
         if cookie_hex:
-            s.sendall(f'AUTHENTICATE "{cookie_hex}"\r\n".encode())
+            s.sendall(f'AUTHENTICATE "{cookie_hex}"\r\n'.encode())
             auth_resp = b""
             while b"\r\n" not in auth_resp:
                 auth_resp += s.recv(1024)
