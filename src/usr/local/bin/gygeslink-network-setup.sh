@@ -130,6 +130,17 @@ fi
 
 LOG "iptables fail-close actif."
 
+# ── Écrire le statut du tier ──────────────────────────────────────
+# tor-prestart.sh attend ce fichier. WireGuard l'écrit s'il est actif,
+# mais en Tier 1 il n'existe pas → Tor bloque au prestart.
+if [ -f /data/gygeslink/wg0.conf ]; then
+    echo "TIER=2" > /run/gygeslink-tier.status
+    LOG "Tier détecté : 2 (WireGuard présent)."
+else
+    echo "TIER=1" > /run/gygeslink-tier.status
+    LOG "Tier détecté : 1 (Classic, pas de WireGuard)."
+fi
+
 # ── Si l'interface USB n'est pas usb0, ajouter les règles manquantes ─
 if [ -n "$USB_IF" ] && [ "$USB_IF" != "usb0" ]; then
     LOG "Ajout des règles iptables pour $USB_IF..."
