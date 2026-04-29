@@ -94,9 +94,21 @@ def _tor_command(cmd: str) -> str:
         cookie_hex = _tor_cookie_auth()
         if cookie_hex:
             s.sendall(f'AUTHENTICATE "{cookie_hex}"\r\n'.encode())
-            auth_resp = s.recv(1024).decode(errors="replace")
-            if "250" not in auth_resp:
-                logger.error("Tor AUTHENTICATE failed: %s", auth_resp.strip())
+            auth_resp = b""
+            while b"\r\n" not in auth_resp:
+                auth_resp += s.recv(1024)
+            auth_text = auth_resp.decode(errors="replace").strip()
+            if "250" not in auth_text:
+                logger.error("Tor AUTHENTICATE failed: %s", auth_text)
+                return ""
+        else:
+            s.sendall(b"AUTHENTICATE \"\"\r\n")
+            auth_resp = b""
+            while b"\r\n" not in auth_resp:
+                auth_resp += s.recv(1024)
+            auth_text = auth_resp.decode(errors="replace").strip()
+            if "250" not in auth_text:
+                logger.error("Tor AUTHENTICATE (no cookie) failed: %s", auth_text)
                 return ""
         s.sendall(f"{cmd}\r\n".encode())
         resp = b""
@@ -105,7 +117,12 @@ def _tor_command(cmd: str) -> str:
             if not chunk:
                 break
             resp += chunk
-            if b"250 " in resp or b"5" in resp[:3]:
+            decoded = resp.decode(errors="replace")
+            if "250 OK" in decoded or "250-ok" in decoded.lower():
+                break
+            if decoded.strip().endswith("250 OK"):
+                break
+            if any(line.startswith("5") for line in decoded.splitlines() if line.strip()):
                 break
         return resp.decode(errors="replace")
     except (socket.error, socket.timeout, OSError) as e:
