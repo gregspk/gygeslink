@@ -143,6 +143,7 @@ systemctl enable gygeslink-tor.service
 systemctl enable gygeslink-iptables-open.service
 systemctl enable gygeslink-jitter.service
 systemctl enable gygeslink-noise.service
+systemctl enable gygeslink-api.service
 systemctl disable gygeslink-led.service 2>/dev/null || true
 systemctl disable gygeslink-button.service 2>/dev/null || true
 

@@ -32,6 +32,12 @@ Log notice file /var/log/tor/notices.log
 # Lié uniquement à 127.0.0.1 : inaccessible depuis le réseau externe.
 SocksPort 127.0.0.1:9050
 
+# ── ControlPort — pour l'API REST desktop ──────────────────────────
+# Utilisé par gygeslink-api.py pour interroger l'état de Tor
+# (bootstrap, circuits, new-identity). Authentification par cookie.
+ControlPort 127.0.0.1:9051
+CookieAuthentication 1
+
 # ── TransPort — proxy transparent TCP ────────────────────────────────
 # Écoute sur 192.168.100.1:9040 (l'IP du Pi côté PC).
 # iptables redirige tout TCP entrant sur usb0 vers ce port.

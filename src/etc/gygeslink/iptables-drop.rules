@@ -22,6 +22,10 @@
 -A INPUT -i usb0 -p udp --dport 67 -j ACCEPT
 -A OUTPUT -o usb0 -p udp --sport 67 -j ACCEPT
 
+# API REST pour l'app desktop (port 4430, usb0 uniquement)
+-A INPUT -i usb0 -p tcp --dport 4430 -j ACCEPT
+-A OUTPUT -o usb0 -p tcp --sport 4430 -j ACCEPT
+
 # DHCP client sur wlan0 (pour obtenir/maintenir l'IPv4 du routeur FAI)
 # CRITIQUE : sans ces règles, dhclient ne peut ni obtenir ni renouveler son bail,
 # l'IPv4 wlan0 est perdue et le Pi devient injoignable en SSH.

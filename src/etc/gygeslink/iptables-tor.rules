@@ -19,6 +19,10 @@
 # Tor résout les DNS de façon anonyme — aucun DNS leak vers le FAI
 -A PREROUTING -i usb0 -p udp --dport 53 -j REDIRECT --to-ports 5353
 
+# Exempter les ports locaux (portail + API) de la redirection TCP vers Tor
+-A PREROUTING -i usb0 -p tcp --dport 443 -j RETURN
+-A PREROUTING -i usb0 -p tcp --dport 4430 -j RETURN
+
 # Rediriger tout le trafic TCP du PC vers le TransPort de Tor
 # Note : tous les paquets TCP, pas seulement SYN — pour les connexions
 # déjà établies au moment où les règles sont appliquées
@@ -111,5 +115,13 @@ COMMIT
 
 # DNSPort Tor : accepter le trafic DNS redirigé depuis usb0
 -A INPUT -i usb0 -p udp --dport 5353 -j ACCEPT
+
+# API REST pour l'app desktop (port 4430, usb0 uniquement)
+-A INPUT -i usb0 -p tcp --dport 4430 -j ACCEPT
+-A OUTPUT -o usb0 -p tcp --sport 4430 -j ACCEPT
+
+# Portail setup HTTPS (port 443, usb0 uniquement — actif si pas setup-done)
+-A INPUT -i usb0 -p tcp --dport 443 -j ACCEPT
+-A OUTPUT -o usb0 -p tcp --sport 443 -j ACCEPT
 
 COMMIT
