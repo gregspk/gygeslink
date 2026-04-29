@@ -79,15 +79,14 @@ if [ -n "$USB_IF" ]; then
                 -O "3,192.168.100.1" \
                 -O "6,192.168.100.1" \
                 2>/dev/null || true
-            LOG "dnsmasq lancé sur $USB_IF — DHCP actif + gateway (Tor en service)."
+            LOG "dnsmasq lancé sur $USB_IF — DHCP avec gateway + DNS (Tor en service)."
         else
             dnsmasq -u dnsmasq -p 0 \
                 -i "$USB_IF" \
                 -I lo \
                 -F "192.168.100.100,192.168.100.110,255.255.255.0,12h" \
-                -O "6,192.168.100.1" \
                 2>/dev/null || true
-            LOG "dnsmasq lancé sur $USB_IF — DHCP actif SANS gateway (mode setup, PC garde son WiFi)."
+            LOG "dnsmasq lancé sur $USB_IF — DHCP SANS gateway ni DNS (mode setup, PC garde son WiFi)."
         fi
     fi
 fi
