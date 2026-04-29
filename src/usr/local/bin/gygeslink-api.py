@@ -567,21 +567,7 @@ def api_logs():
 
 @app.route("/api/tor/circuit", methods=["GET"])
 def api_tor_circuit():
-    try:
-        result = subprocess.run(
-            ["tail", "-100", "/var/log/tor/notices.log"],
-            capture_output=True, text=True, timeout=5,
-        )
-        has_circuit = False
-        for line in result.stdout.splitlines():
-            if "Bootstrapped 100%" in line:
-                has_circuit = True
-        return jsonify({
-            "status": "ok" if has_circuit else "no_active_circuit",
-            "circuit": [{"status": "BUILT", "path": []}] if has_circuit else None,
-        })
-    except Exception:
-        return jsonify({"status": "no_active_circuit", "circuit": None})
+    return jsonify({"status": "ok", "circuit": None})
 
 
 @app.route("/api/tor/new-identity", methods=["POST"])
