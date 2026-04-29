@@ -55,7 +55,7 @@ app.secret_key = os.urandom(32)
 limiter = Limiter(
     app=app,
     key_func=get_remote_address,
-    default_limits=["200 per day"],
+    default_limits=["10000 per day"],
     storage_uri="memory://",
 )
 
@@ -278,6 +278,7 @@ def _get_recent_logs(lines: int = 50) -> list:
 # ─────────────────────────────────────────────────────────────────────
 
 @app.route("/api/status", methods=["GET"])
+@limiter.exempt
 def api_status():
     return jsonify({
         "tor_bootstrap": _get_tor_bootstrap(),
@@ -553,6 +554,7 @@ def api_reboot():
 
 
 @app.route("/api/health", methods=["GET"])
+@limiter.exempt
 def api_health():
     return jsonify({"status": "ok"})
 
