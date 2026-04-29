@@ -108,6 +108,12 @@ def _tor_command(cmd: str) -> str:
 
 
 def _get_tor_bootstrap() -> int:
+    result = subprocess.run(
+        ["ss", "-tlnp"],
+        capture_output=True, text=True,
+    )
+    if ":9040 " in result.stdout:
+        return 100
     resp = _tor_command("GETINFO status/bootstrap-phase")
     for line in resp.splitlines():
         if "PROGRESS=" in line:
