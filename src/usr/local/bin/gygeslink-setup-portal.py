@@ -603,7 +603,7 @@ def bridges():
     if request.form.get("skip"):
         DATA_DIR.mkdir(parents=True, exist_ok=True)
         BRIDGES_CONF_FILE.touch()
-        BRIDGES_CONF_FILE.chmod(0o600)
+        BRIDGES_CONF_FILE.chmod(0o644)
         logger.info("Bridges obfs4 : ignoré par l'utilisateur.")
         return render_template_string(HTML_HOME, error=None)
 
@@ -637,7 +637,7 @@ def bridges():
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     content = "# GygesLink — Bridges obfs4 (configurées via portail)\n" + "\n".join(valid) + "\n"
     BRIDGES_CONF_FILE.write_text(content)
-    BRIDGES_CONF_FILE.chmod(0o600)
+    BRIDGES_CONF_FILE.chmod(0o644)
 
     logger.info("Bridges obfs4 configurées : %d bridge(s).", len(valid))
 

@@ -25,12 +25,18 @@ from flask import Flask, request, jsonify
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 
-DATA_DIR = Path("/data/gygeslink")
-SETUP_DONE_FILE = DATA_DIR / "setup-done"
-WG_CONF_FILE = DATA_DIR / "wg0.conf"
-WG_EXPIRY_FILE = DATA_DIR / "wg-expiry.txt"
-WIFI_CONF_FILE = DATA_DIR / "wifi.conf"
+DATA_DIR         = Path("/data/gygeslink")
+SETUP_DONE_FILE  = DATA_DIR / "setup-done"
+WG_CONF_FILE     = DATA_DIR / "wg0.conf"
+WG_EXPIRY_FILE   = DATA_DIR / "wg-expiry.txt"
+WIFI_CONF_FILE   = DATA_DIR / "wifi.conf"
 BRIDGES_CONF_FILE = DATA_DIR / "bridges.conf"
+# Bridges obfs4 = adresses publiques, pas de secret.
+# Tor (debian-tor) doit pouvoir lire ce fichier (inclus via %include).
+# 644 = lisible par tous, pas de mot de passe dedans.
+BRIDGES_CONF_PERM = 0o644
+
+DATA_DIR = Path("/data/gygeslink")
 
 API_HOST = "192.168.100.1"
 API_PORT = 4430
@@ -356,7 +362,7 @@ def api_bridges():
     if data.get("skip"):
         DATA_DIR.mkdir(parents=True, exist_ok=True)
         BRIDGES_CONF_FILE.touch()
-        BRIDGES_CONF_FILE.chmod(0o600)
+        BRIDGES_CONF_FILE.chmod(BRIDGES_CONF_PERM)
         logger.info("Bridges ignoré via API.")
         return _json_ok(message="Bridges ignoré.")
 
