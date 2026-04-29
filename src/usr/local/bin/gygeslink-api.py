@@ -36,8 +36,6 @@ BRIDGES_CONF_FILE = DATA_DIR / "bridges.conf"
 # 644 = lisible par tous, pas de mot de passe dedans.
 BRIDGES_CONF_PERM = 0o644
 
-DATA_DIR = Path("/data/gygeslink")
-
 API_HOST = "192.168.100.1"
 API_PORT = 4430
 
@@ -361,7 +359,7 @@ def api_bridges():
 
     if data.get("skip"):
         DATA_DIR.mkdir(parents=True, exist_ok=True)
-        BRIDGES_CONF_FILE.touch()
+        BRIDGES_CONF_FILE.write_text("# GygesLink — Bridges obfs4\n")
         BRIDGES_CONF_FILE.chmod(BRIDGES_CONF_PERM)
         logger.info("Bridges ignoré via API.")
         return _json_ok(message="Bridges ignoré.")
