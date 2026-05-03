@@ -8,7 +8,7 @@ Type=oneshot
 RemainAfterExit=yes
 
 ExecStart=/usr/local/bin/gygeslink-iptables.sh open
-ExecStartPost=/usr/bin/conntrack -F
+ExecStartPost=-/usr/bin/conntrack -F
 ExecStop=-/usr/local/bin/gygeslink-iptables.sh close
 
 [Install]
