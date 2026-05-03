@@ -1,7 +1,7 @@
 [Unit]
 Description=GygesLink — Ouverture iptables (Tor opérationnel)
 After=gygeslink-tor.service
-Requires=gygeslink-tor.service
+Wants=gygeslink-tor.service
 
 [Service]
 Type=oneshot
@@ -9,7 +9,7 @@ RemainAfterExit=yes
 
 ExecStart=/usr/local/bin/gygeslink-iptables.sh open
 ExecStartPost=/usr/bin/conntrack -F
-ExecStop=/usr/local/bin/gygeslink-iptables.sh close
+ExecStop=-/usr/local/bin/gygeslink-iptables.sh close
 
 [Install]
 WantedBy=multi-user.target

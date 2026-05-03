@@ -3,6 +3,8 @@
 # Exécuté par gygeslink-iptables-open.service
 # Détecte l'interface USB réelle (usb0 ou usb1) et adapte les règles.
 
+set -euo pipefail
+
 # Détecter l'interface USB
 USB_IF=""
 for iface in usb0 usb1 usb2; do
@@ -14,7 +16,6 @@ done
 
 # Si l'interface USB n'est pas usb0, préparer les règles adaptées
 if [ -n "$USB_IF" ] && [ "$USB_IF" != "usb0" ]; then
-    # Créer une copie temporaire des règles avec la bonne interface
     sed "s/usb0/$USB_IF/g" /etc/gygeslink/iptables-tor.rules > /tmp/iptables-tor-active.rules
     sed "s/usb0/$USB_IF/g" /etc/gygeslink/iptables-drop.rules > /tmp/iptables-drop-active.rules
 else

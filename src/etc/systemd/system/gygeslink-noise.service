@@ -3,7 +3,7 @@ Description=GygesLink Noise Daemon — trafic leurre via Tor
 # Démarre uniquement après que les règles iptables Tor sont actives
 # et que le trafic est effectivement redirigé
 After=gygeslink-iptables-open.service
-Requires=gygeslink-iptables-open.service
+Wants=gygeslink-iptables-open.service
 
 [Service]
 Type=simple
