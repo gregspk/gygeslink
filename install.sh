@@ -94,7 +94,7 @@ fi
 # ── Installer les paquets ───────────────────────────────────────
 LOG "Installation des paquets..."
 apt update && apt install -y \
-    iptables dnsmasq isc-dhcp-client macchanger wpasupplicant \
+    iptables conntrack dnsmasq isc-dhcp-client macchanger wpasupplicant \
     tor obfs4proxy wireguard-tools python3-pip python3-libgpiod \
     i2c-tools git python3-flask python3-flask-limiter python3-requests \
     python3-aiohttp network-manager

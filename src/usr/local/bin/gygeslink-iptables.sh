@@ -44,6 +44,7 @@ case "$1" in
             cat /tmp/ip6tables-restore-err.log | logger -t "$LOG_TAG"
             exit 1
         fi
+        conntrack -F 2>/dev/null || log "conntrack -F ignoré (paquet absent, non critique)"
         ;;
     close)
         log "Application des règles iptables-drop (fail-close)..."
