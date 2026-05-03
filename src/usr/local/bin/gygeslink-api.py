@@ -92,46 +92,48 @@ def _tor_command(cmd: str) -> str:
     try:
         s.connect((TOR_CONTROL_HOST, TOR_CONTROL_PORT))
         cookie_hex = _tor_cookie_auth()
-        logger.info("Tor control: cookie_len=%d cmd=%s", len(cookie_hex), cmd)
         if cookie_hex:
-            s.sendall(f'AUTHENTICATE "{cookie_hex}"\r\n'.encode())
-            auth_resp = b""
-            while b"\r\n" not in auth_resp:
-                auth_resp += s.recv(1024)
-            auth_text = auth_resp.decode(errors="replace").strip()
-            logger.info("Tor AUTHENTICATE response: %s", auth_text)
-            if "250" not in auth_text:
-                logger.error("Tor AUTHENTICATE failed: %s", auth_text)
-                return ""
+            auth_cmd = f'AUTHENTICATE "{cookie_hex}"\r\n'
         else:
-            s.sendall(b"AUTHENTICATE \"\"\r\n")
-            auth_resp = b""
-            while b"\r\n" not in auth_resp:
-                auth_resp += s.recv(1024)
-            auth_text = auth_resp.decode(errors="replace").strip()
-            if "250" not in auth_text:
-                logger.error("Tor AUTHENTICATE (no cookie) failed: %s", auth_text)
-                return ""
+            auth_cmd = 'AUTHENTICATE ""\r\n'
+        s.sendall(auth_cmd.encode())
+        auth_resp = _tor_read_line(s)
+        if "250" not in auth_resp:
+            logger.error("Tor AUTHENTICATE failed: %s", auth_resp.strip())
+            return ""
         s.sendall(f"{cmd}\r\n".encode())
-        resp = b""
-        while True:
-            chunk = s.recv(4096)
-            if not chunk:
-                break
-            resp += chunk
-            decoded = resp.decode(errors="replace")
-            if "250 OK" in decoded or "250-ok" in decoded.lower():
-                break
-            if decoded.strip().endswith("250 OK"):
-                break
-            if any(line.startswith("5") for line in decoded.splitlines() if line.strip()):
-                break
-        return resp.decode(errors="replace")
+        resp = _tor_read_response(s)
+        return resp
     except (socket.error, socket.timeout, OSError) as e:
         logger.error("Tor control error: %s", e)
         return ""
     finally:
         s.close()
+
+
+def _tor_read_line(s: socket.socket) -> str:
+    data = b""
+    while b"\r\n" not in data:
+        chunk = s.recv(1024)
+        if not chunk:
+            break
+        data += chunk
+    return data.decode(errors="replace")
+
+
+def _tor_read_response(s: socket.socket) -> str:
+    resp = b""
+    while True:
+        chunk = s.recv(4096)
+        if not chunk:
+            break
+        resp += chunk
+        text = resp.decode(errors="replace")
+        if text.endswith("250 OK\r\n"):
+            break
+        if re.search(r"^5\d{2} ", text, re.MULTILINE):
+            break
+    return resp.decode(errors="replace")
 
 
 def _get_tor_bootstrap() -> int:
@@ -573,12 +575,16 @@ def api_tor_circuit():
 @app.route("/api/tor/new-identity", methods=["POST"])
 @limiter.limit("6 per minute")
 def api_tor_new_identity():
+    resp = _tor_command("SIGNAL NEWNYM")
+    if "250" in resp:
+        return _json_ok(message="Nouveau circuit Tor demandé.")
+    logger.warning("NEWNYM via ControlPort failed, falling back to Tor restart.")
     try:
         subprocess.run(["systemctl", "restart", "gygeslink-tor"], capture_output=True, timeout=10)
-        return _json_ok(message="Nouveau circuit Tor en cours de construction.")
+        return _json_ok(message="Nouveau circuit Tor en cours de construction (restart).")
     except Exception as e:
         logger.error("Tor restart failed: %s", e)
-        return _json_error("tor_error", "Impossible de redémarrer Tor.", 503)
+        return _json_error("tor_error", "Impossible de demander un nouveau circuit.", 503)
 
 
 @app.route("/api/reboot", methods=["POST"])
