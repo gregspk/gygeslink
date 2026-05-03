@@ -2,8 +2,6 @@
 Description=GygesLink — Ouverture iptables (Tor opérationnel)
 After=gygeslink-tor.service
 Requires=gygeslink-tor.service
-PartOf=gygeslink-tor.service
-BindsTo=gygeslink-tor.service
 
 [Service]
 Type=oneshot
