@@ -127,6 +127,13 @@ else
     LOG "setup-done absent (mode factory — portail actif au premier boot)."
 fi
 
+# ── Module IFB pour le jitter (netem sur interface virtuelle) ──────
+if ! grep -q "^ifb" /etc/modules 2>/dev/null; then
+    echo "ifb" >> /etc/modules
+    LOG "Module ifb ajouté à /etc/modules."
+fi
+modprobe ifb numifbs=1 2>/dev/null || true
+
 # ── NetworkManager ──────────────────────────────────────────────
 systemctl enable NetworkManager
 systemctl start NetworkManager 2>/dev/null || true
