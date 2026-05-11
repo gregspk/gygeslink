@@ -9,6 +9,12 @@ Le portail setup reste sur :443 (HTTPS).
 Fonctionne EN PARALLÈLE du portail setup :
   - Si setup-done absent : portail ET api actifs
   - Si setup-done présent : seul l'api est actif (tor+iptables opérationnels)
+
+Architecture SSE :
+  - Thread daemon collecte le statut toutes les 5s dans un cache partagé
+  - GET /api/status/stream : SSE, pousse un event quand le statut change
+  - GET /api/status : lit le cache (instantané, plus de subprocesses)
+  - Heartbeat ping toutes les 30s sur le stream
 """
 
 import json
@@ -17,11 +23,12 @@ import os
 import re
 import socket
 import subprocess
+import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, Response, stream_with_context
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 
@@ -31,9 +38,6 @@ WG_CONF_FILE     = DATA_DIR / "wg0.conf"
 WG_EXPIRY_FILE   = DATA_DIR / "wg-expiry.txt"
 WIFI_CONF_FILE   = DATA_DIR / "wifi.conf"
 BRIDGES_CONF_FILE = DATA_DIR / "bridges.conf"
-# Bridges obfs4 = adresses publiques, pas de secret.
-# Tor (debian-tor) doit pouvoir lire ce fichier (inclus via %include).
-# 644 = lisible par tous, pas de mot de passe dedans.
 BRIDGES_CONF_PERM = 0o644
 
 API_HOST = "192.168.100.1"
@@ -46,6 +50,9 @@ TOR_COOKIE_PATHS = [
     "/var/run/tor/control.authcookie",
     "/run/tor/control.authcookie",
 ]
+
+STATUS_CACHE_INTERVAL = 5
+SSE_PING_INTERVAL = 30
 
 logging.basicConfig(
     level=logging.INFO,
@@ -63,6 +70,46 @@ limiter = Limiter(
     storage_uri="memory://",
 )
 
+# ─────────────────────────────────────────────────────────────────────
+# Status cache — thread-safe, mis à jour en arrière-plan
+# ─────────────────────────────────────────────────────────────────────
+
+_status_cache = {}
+_status_lock = threading.Lock()
+
+
+def _collect_status() -> dict:
+    return {
+        "tor_bootstrap": _get_tor_bootstrap(),
+        "tier": _get_tier(),
+        "wireguard_active": _is_wireguard_active(),
+        "wifi_connected": _is_wifi_connected(),
+        "wifi_ssid": _get_wifi_ssid(),
+        "bridges_count": _count_bridges(),
+        "noise_active": _is_noise_active(),
+        "jitter_active": _is_jitter_active(),
+        "led_color": _get_led_color(),
+        "wg_expiry": _get_wg_expiry(),
+        "uptime_seconds": _get_uptime(),
+        "setup_done": SETUP_DONE_FILE.exists(),
+    }
+
+
+def _status_collector():
+    global _status_cache
+    while True:
+        try:
+            new_status = _collect_status()
+            with _status_lock:
+                _status_cache = new_status
+        except Exception as e:
+            logger.error("Status collector error: %s", e)
+        time.sleep(STATUS_CACHE_INTERVAL)
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Helpers
+# ─────────────────────────────────────────────────────────────────────
 
 def _json_ok(**kwargs) -> tuple:
     return jsonify({"success": True, **kwargs}), 200
@@ -262,10 +309,13 @@ def _get_tier() -> int:
 def _get_led_color() -> str:
     if not SETUP_DONE_FILE.exists():
         return "blue_blink"
-    bootstrap = _get_tor_bootstrap()
+    with _status_lock:
+        bootstrap = _status_cache.get("tor_bootstrap", 0)
+        tier = _status_cache.get("tier", 1)
+        wg_active = _status_cache.get("wireguard_active", False)
     if bootstrap < 100:
         return "red_blink"
-    if _get_tier() == 2 and not _is_wireguard_active():
+    if tier == 2 and not wg_active:
         return "orange"
     if bootstrap >= 100:
         return "green"
@@ -320,20 +370,49 @@ def _get_recent_logs(lines: int = 50) -> list:
 @app.route("/api/status", methods=["GET"])
 @limiter.exempt
 def api_status():
-    return jsonify({
-        "tor_bootstrap": _get_tor_bootstrap(),
-        "tier": _get_tier(),
-        "wireguard_active": _is_wireguard_active(),
-        "wifi_connected": _is_wifi_connected(),
-        "wifi_ssid": _get_wifi_ssid(),
-        "bridges_count": _count_bridges(),
-        "noise_active": _is_noise_active(),
-        "jitter_active": _is_jitter_active(),
-        "led_color": _get_led_color(),
-        "wg_expiry": _get_wg_expiry(),
-        "uptime_seconds": _get_uptime(),
-        "setup_done": SETUP_DONE_FILE.exists(),
-    })
+    with _status_lock:
+        return jsonify(dict(_status_cache))
+
+
+@app.route("/api/status/stream", methods=["GET"])
+@limiter.exempt
+def api_status_stream():
+    def generate():
+        with _status_lock:
+            initial = dict(_status_cache)
+            last_json = json.dumps(initial, sort_keys=True)
+        yield f"event: status\ndata: {json.dumps(initial)}\n\n"
+
+        last_hash = hash(last_json)
+        last_ping = time.time()
+
+        while True:
+            time.sleep(1)
+            now = time.time()
+
+            if now - last_ping >= SSE_PING_INTERVAL:
+                yield "event: ping\ndata: \n\n"
+                last_ping = now
+
+            with _status_lock:
+                current = dict(_status_cache)
+            current_json = json.dumps(current, sort_keys=True)
+            current_hash = hash(current_json)
+
+            if current_hash != last_hash:
+                yield f"event: status\ndata: {json.dumps(current)}\n\n"
+                last_hash = current_hash
+                last_ping = now
+
+    return Response(
+        stream_with_context(generate()),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
 
 
 @app.route("/api/config", methods=["GET"])
@@ -537,8 +616,6 @@ def api_factory_reset():
         if f.exists():
             f.unlink()
 
-    # bridges.conf MUST exist (even empty) — torrc %include will crash if absent
-    # Write an empty placeholder instead of deleting
     BRIDGES_CONF_FILE.write_text("# GygesLink — Bridges obfs4\n")
     BRIDGES_CONF_FILE.chmod(BRIDGES_CONF_PERM)
 
@@ -601,5 +678,7 @@ def api_health():
 
 
 if __name__ == "__main__":
+    collector = threading.Thread(target=_status_collector, daemon=True)
+    collector.start()
     logger.info("API GygesLink démarrée sur http://%s:%d", API_HOST, API_PORT)
     app.run(host=API_HOST, port=API_PORT, debug=False, threaded=True)
