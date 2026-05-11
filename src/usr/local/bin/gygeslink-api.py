@@ -428,6 +428,32 @@ def api_config():
     return jsonify(config)
 
 
+@app.route("/api/wifi/scan", methods=["GET"])
+@limiter.limit("2 per minute")
+def api_wifi_scan():
+    result = subprocess.run(
+        ["nmcli", "-t", "-f", "ssid,signal,security", "dev", "wifi", "list", "--rescan", "yes"],
+        capture_output=True, text=True, timeout=30,
+    )
+    networks = []
+    seen = set()
+    for line in result.stdout.strip().splitlines():
+        parts = line.split(":")
+        if len(parts) >= 3:
+            ssid = parts[0].strip()
+            if not ssid or ssid in seen:
+                continue
+            seen.add(ssid)
+            try:
+                signal = int(parts[1])
+            except ValueError:
+                signal = 0
+            security = parts[2].strip() if len(parts) > 2 else ""
+            networks.append({"ssid": ssid, "signal": signal, "security": security})
+    networks.sort(key=lambda n: n["signal"], reverse=True)
+    return jsonify({"networks": networks})
+
+
 @app.route("/api/wifi", methods=["POST"])
 @limiter.limit("10 per minute")
 def api_wifi():
