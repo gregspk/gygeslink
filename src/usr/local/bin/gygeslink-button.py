@@ -109,6 +109,7 @@ def trigger_setup_reset() -> None:
         Path("/etc/NetworkManager/system-connections/GygesLink-WiFi.nmconnection"),
         Path("/data/gygeslink/wg0.conf"),
         Path("/data/gygeslink/wg-expiry.txt"),
+        Path("/data/gygeslink/paused"),
     ]
 
     for f in files_to_delete:

@@ -57,8 +57,40 @@ case "$1" in
             cat /tmp/ip6tables-restore-err.log | logger -t "$LOG_TAG"
         }
         ;;
+    bypass)
+        log "Application des règles iptables-bypass (mode pause)..."
+
+        if [ -n "$USB_IF" ] && [ "$USB_IF" != "usb0" ]; then
+            sed "s/usb0/$USB_IF/g" /etc/gygeslink/iptables-bypass.rules > /tmp/iptables-bypass-active.rules
+        else
+            cp /etc/gygeslink/iptables-bypass.rules /tmp/iptables-bypass-active.rules
+        fi
+
+        if iptables-restore < /tmp/iptables-bypass-active.rules 2>/tmp/iptables-restore-err.log; then
+            log "iptables-restore OK (bypass rules)"
+        else
+            err "iptables-restore a échoué (bypass):"
+            cat /tmp/iptables-restore-err.log | logger -t "$LOG_TAG"
+            exit 1
+        fi
+        ip6tables-restore < /etc/gygeslink/ip6tables-drop.rules 2>/tmp/ip6tables-restore-err.log || {
+            err "ip6tables-restore a échoué (bypass ipv6):"
+            cat /tmp/ip6tables-restore-err.log | logger -t "$LOG_TAG"
+        }
+
+        GW=$(ip route show default | awk '/default/ && /wlan0/ {print $3}')
+        if [ -n "$GW" ]; then
+            iptables -t nat -A PREROUTING -i "${USB_IF:-usb0}" -p udp --dport 53 -j DNAT --to-destination "$GW"
+            log "DNS DNAT vers gateway: $GW"
+        else
+            err "Aucune gateway default sur wlan0 — DNS du PC ne fonctionnera pas en bypass."
+        fi
+
+        conntrack -F 2>/dev/null || log "conntrack -F ignoré (paquet absent, non critique)"
+        log "Mode bypass actif — trafic en clair."
+        ;;
     *)
-        echo "Usage: $0 {open|close}" >&2
+        echo "Usage: $0 {open|close|bypass}" >&2
         exit 1
         ;;
 esac

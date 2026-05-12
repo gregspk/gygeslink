@@ -39,6 +39,7 @@ WG_EXPIRY_FILE   = DATA_DIR / "wg-expiry.txt"
 WIFI_CONF_FILE   = DATA_DIR / "wifi.conf"
 BRIDGES_CONF_FILE = DATA_DIR / "bridges.conf"
 BRIDGES_CONF_PERM = 0o644
+PAUSED_FILE       = DATA_DIR / "paused"
 
 API_HOST = "192.168.100.1"
 API_PORT = 4430
@@ -92,6 +93,7 @@ def _collect_status() -> dict:
         "wg_expiry": _get_wg_expiry(),
         "uptime_seconds": _get_uptime(),
         "setup_done": SETUP_DONE_FILE.exists(),
+        "paused": PAUSED_FILE.exists(),
     }
 
 
@@ -307,6 +309,8 @@ def _get_tier() -> int:
 
 
 def _get_led_color() -> str:
+    if PAUSED_FILE.exists():
+        return "pause"
     if not SETUP_DONE_FILE.exists():
         return "blue_blink"
     with _status_lock:
@@ -629,6 +633,56 @@ def _build_wg_config(private_key: str, api_data: dict) -> tuple:
     return config, expiry
 
 
+@app.route("/api/pause", methods=["POST"])
+@limiter.limit("6 per minute")
+def api_pause():
+    if PAUSED_FILE.exists():
+        return _json_error("already_paused", "Le mode pause est déjà actif.")
+
+    if not _is_wifi_connected():
+        return _json_error("no_wifi", "Aucune connexion WiFi active. Le mode pause nécessite un accès Internet via le routeur.")
+
+    try:
+        subprocess.run(
+            ["/usr/local/bin/gygeslink-iptables.sh", "bypass"],
+            capture_output=True, text=True, timeout=15,
+        )
+        subprocess.run(
+            ["systemctl", "stop", "gygeslink-noise"],
+            capture_output=True, text=True, timeout=10,
+        )
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        PAUSED_FILE.touch()
+        logger.info("Mode pause activé via API.")
+        return _json_ok(message="Mode pause activé. Le trafic n'est plus anonymisé.")
+    except Exception as e:
+        logger.error("Erreur pause: %s", e)
+        return _json_error("pause_error", f"Erreur lors de l'activation du mode pause : {e}", 500)
+
+
+@app.route("/api/resume", methods=["POST"])
+@limiter.limit("6 per minute")
+def api_resume():
+    if not PAUSED_FILE.exists():
+        return _json_error("not_paused", "Le mode pause n'est pas actif.")
+
+    try:
+        subprocess.run(
+            ["/usr/local/bin/gygeslink-iptables.sh", "open"],
+            capture_output=True, text=True, timeout=15,
+        )
+        subprocess.run(
+            ["systemctl", "start", "gygeslink-noise"],
+            capture_output=True, text=True, timeout=10,
+        )
+        PAUSED_FILE.unlink(missing_ok=True)
+        logger.info("Mode Tor rétabli via API.")
+        return _json_ok(message="Mode Tor rétabli. Le trafic est de nouveau anonymisé.")
+    except Exception as e:
+        logger.error("Erreur resume: %s", e)
+        return _json_error("resume_error", f"Erreur lors de la reprise du mode Tor : {e}", 500)
+
+
 @app.route("/api/factory-reset", methods=["POST"])
 @limiter.limit("2 per minute")
 def api_factory_reset():
@@ -637,6 +691,7 @@ def api_factory_reset():
         WIFI_CONF_FILE,
         WG_CONF_FILE,
         WG_EXPIRY_FILE,
+        PAUSED_FILE,
     ]
     for f in files_to_delete:
         if f.exists():

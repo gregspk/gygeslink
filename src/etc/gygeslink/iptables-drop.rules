@@ -26,6 +26,14 @@
 -A INPUT -i usb0 -p tcp --dport 4430 -j ACCEPT
 -A OUTPUT -o usb0 -p tcp --sport 4430 -j ACCEPT
 
+# SSH sur usb0 (accès depuis le PC branché en USB-C)
+-A INPUT -i usb0 -p tcp --dport 22 -j ACCEPT
+-A OUTPUT -o usb0 -p tcp --sport 22 -j ACCEPT
+
+# Setup portal HTTPS (port 443, usb0 uniquement — mode setup)
+-A INPUT -i usb0 -p tcp --dport 443 -j ACCEPT
+-A OUTPUT -o usb0 -p tcp --sport 443 -j ACCEPT
+
 # DHCP client sur wlan0 (pour obtenir/maintenir l'IPv4 du routeur FAI)
 # CRITIQUE : sans ces règles, dhclient ne peut ni obtenir ni renouveler son bail,
 # l'IPv4 wlan0 est perdue et le Pi devient injoignable en SSH.

@@ -22,6 +22,12 @@
 # Exempter le port de l'API desktop de la redirection TCP vers Tor
 -A PREROUTING -i usb0 -p tcp --dport 4430 -j RETURN
 
+# Exempter SSH de la redirection TCP vers Tor
+-A PREROUTING -i usb0 -p tcp --dport 22 -j RETURN
+
+# Exempter le setup portal HTTPS de la redirection TCP vers Tor
+-A PREROUTING -i usb0 -p tcp --dport 443 -j RETURN
+
 # Rediriger tout le trafic TCP du PC vers le TransPort de Tor
 # Note : tous les paquets TCP, pas seulement SYN — pour les connexions
 # déjà établies au moment où les règles sont appliquées
@@ -122,5 +128,13 @@ COMMIT
 # API REST pour l'app desktop (port 4430, usb0 uniquement)
 -A INPUT -i usb0 -p tcp --dport 4430 -j ACCEPT
 -A OUTPUT -o usb0 -p tcp --sport 4430 -j ACCEPT
+
+# SSH sur usb0 (accès depuis le PC branché en USB-C)
+-A INPUT -i usb0 -p tcp --dport 22 -j ACCEPT
+-A OUTPUT -o usb0 -p tcp --sport 22 -j ACCEPT
+
+# Setup portal HTTPS (port 443, usb0 uniquement)
+-A INPUT -i usb0 -p tcp --dport 443 -j ACCEPT
+-A OUTPUT -o usb0 -p tcp --sport 443 -j ACCEPT
 
 COMMIT

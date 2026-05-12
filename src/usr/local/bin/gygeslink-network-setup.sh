@@ -151,4 +151,11 @@ if [ ! -f /data/gygeslink/setup-done ]; then
     fi
 fi
 
+# ── Mode pause : si le flag existe, appliquer le bypass immédiatement ─
+if [ -f /data/gygeslink/paused ]; then
+    LOG "Mode pause détecté au boot — application du bypass."
+    /usr/local/bin/gygeslink-iptables.sh bypass 2>/dev/null || \
+        ERR "Impossible d'appliquer le bypass au boot."
+fi
+
 LOG "Configuration réseau terminée."

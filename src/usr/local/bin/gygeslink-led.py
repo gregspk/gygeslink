@@ -93,6 +93,7 @@ def _load_gpio_conf() -> None:
 SETUP_DONE_FILE  = Path("/data/gygeslink/setup-done")
 WG_CONF_FILE     = Path("/data/gygeslink/wg0.conf")
 WG_EXPIRY_FILE   = Path("/data/gygeslink/wg-expiry.txt")
+PAUSED_FILE      = Path("/data/gygeslink/paused")
 
 EXPIRY_WARNING_DAYS = 7
 CHECK_INTERVAL = 5.0
@@ -184,7 +185,8 @@ def voucher_expiring_soon() -> bool:
 def get_system_state() -> str:
     if not SETUP_DONE_FILE.exists():
         return "setup"
-
+    if PAUSED_FILE.exists():
+        return "paused"
     tor_ok = service_active("gygeslink-tor")
     iptables_ok = service_active("gygeslink-iptables-open")
 
@@ -241,6 +243,11 @@ def show_ok() -> None:
     time.sleep(2.0)
 
 
+def show_paused() -> None:
+    set_color(False, False, True)
+    time.sleep(2.0)
+
+
 # ─────────────────────────────────────────────────────────────────────
 # Boucle principale
 # ─────────────────────────────────────────────────────────────────────
@@ -265,6 +272,8 @@ def led_loop() -> None:
 
         if current_state == "setup":
             blink_setup()
+        elif current_state == "paused":
+            show_paused()
         elif current_state == "error":
             blink_error()
         elif current_state == "partial":
