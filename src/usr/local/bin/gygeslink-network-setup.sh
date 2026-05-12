@@ -27,6 +27,12 @@ if [ -f /data/gygeslink/network.conf ]; then
     done < /data/gygeslink/network.conf
 fi
 
+# ── MAC randomisation ──────────────────────────────────────────────
+# Randomise l'adresse MAC de wlan0 avant la connexion WiFi pour
+# atténuer le tracking par le routeur FAI. macchanger est déjà
+# installé via install.sh.
+macchanger -r wlan0 2>/dev/null || true
+
 # ── S'assurer que wlan0 est UP ─────────────────────────────────────
 # wlan0 est géré par netplan+networkd. On la monte ici pour que
 # iw dev wlan0 scan fonctionne même avant que networkd ne soit prêt.

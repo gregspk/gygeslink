@@ -47,7 +47,6 @@ network:
   wifis:
     wlan0:
       dhcp4: true
-      macaddress: shuffle
       access-points:
         "$WIFI_SSID_ESCAPED":
           password: "$WIFI_PSK_ESCAPED"
