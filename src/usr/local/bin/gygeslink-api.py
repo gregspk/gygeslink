@@ -651,6 +651,10 @@ def api_pause():
             ["systemctl", "stop", "gygeslink-noise"],
             capture_output=True, text=True, timeout=10,
         )
+        subprocess.run(
+            ["systemctl", "stop", "gygeslink-jitter"],
+            capture_output=True, text=True, timeout=10,
+        )
         DATA_DIR.mkdir(parents=True, exist_ok=True)
         PAUSED_FILE.touch()
         logger.info("Mode pause activé via API.")
@@ -673,6 +677,10 @@ def api_resume():
         )
         subprocess.run(
             ["systemctl", "start", "gygeslink-noise"],
+            capture_output=True, text=True, timeout=10,
+        )
+        subprocess.run(
+            ["systemctl", "start", "gygeslink-jitter"],
             capture_output=True, text=True, timeout=10,
         )
         PAUSED_FILE.unlink(missing_ok=True)

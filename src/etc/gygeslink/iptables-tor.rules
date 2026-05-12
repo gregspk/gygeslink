@@ -20,13 +20,14 @@
 -A PREROUTING -i usb0 -p udp --dport 53 -j REDIRECT --to-ports 5353
 
 # Exempter le port de l'API desktop de la redirection TCP vers Tor
--A PREROUTING -i usb0 -p tcp --dport 4430 -j RETURN
+# Destination 192.168.100.1 uniquement — sinon le trafic HTTPS du PC passe en clair
+-A PREROUTING -i usb0 -p tcp -d 192.168.100.1 --dport 4430 -j RETURN
 
-# Exempter SSH de la redirection TCP vers Tor
--A PREROUTING -i usb0 -p tcp --dport 22 -j RETURN
+# Exempter SSH de la redirection TCP vers Tor (vers le Pi uniquement)
+-A PREROUTING -i usb0 -p tcp -d 192.168.100.1 --dport 22 -j RETURN
 
-# Exempter le setup portal HTTPS de la redirection TCP vers Tor
--A PREROUTING -i usb0 -p tcp --dport 443 -j RETURN
+# Exempter le setup portal HTTPS de la redirection TCP vers Tor (vers le Pi uniquement)
+-A PREROUTING -i usb0 -p tcp -d 192.168.100.1 --dport 443 -j RETURN
 
 # Rediriger tout le trafic TCP du PC vers le TransPort de Tor
 # Note : tous les paquets TCP, pas seulement SYN — pour les connexions
