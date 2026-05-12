@@ -554,7 +554,7 @@ def index():
 @app.route("/wifi", methods=["POST"])
 @limiter.limit("10 per minute")
 def wifi():
-    """Enregistre les credentials WiFi dans /data/gygeslink/wifi.conf."""
+    """Enregistre les credentials WiFi dans /data/gygeslink/wifi.conf et /etc/netplan/."""
     ssid     = request.form.get("ssid", "").strip()
     password = request.form.get("password", "")
 
@@ -566,13 +566,9 @@ def wifi():
         return render_template_string(HTML_WIFI, error="Mot de passe trop court (8 caractères minimum pour WPA2).")
     if len(password) > 63:
         return render_template_string(HTML_WIFI, error="Mot de passe trop long (63 caractères max).")
-    # Rejeter les caractères de contrôle — prévient l'injection de directives
-    # wpa_supplicant via un retour à la ligne dans le SSID ou le mot de passe.
     if re.search(r'[\r\n\x00]', ssid) or re.search(r'[\r\n\x00]', password):
         return render_template_string(HTML_WIFI, error="Caractères invalides dans le SSID ou le mot de passe.")
 
-    # Écrire la config wpa_supplicant
-    # Les guillemets dans SSID/password sont échappés pour éviter l'injection
     ssid_escaped     = ssid.replace('"', '\\"')
     password_escaped = password.replace('"', '\\"')
 
@@ -588,7 +584,42 @@ network={{
 
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     WIFI_CONF_FILE.write_text(wifi_config)
-    WIFI_CONF_FILE.chmod(0o600)   # Credentials — lecture seule pour root
+    WIFI_CONF_FILE.chmod(0o600)
+
+    netplan_yaml = (
+        "network:\n"
+        "  version: 2\n"
+        "  renderer: networkd\n"
+        "  wifis:\n"
+        "    wlan0:\n"
+        "      dhcp4: true\n"
+        "      macaddress: shuffle\n"
+        f'      access-points:\n'
+        f'        "{ssid_escaped}":\n'
+        f'          password: "{password_escaped}"\n'
+    )
+    from pathlib import Path as _Path
+    netplan_file = _Path("/etc/netplan/30-wifis-dhcp.yaml")
+    netplan_file.write_text(netplan_yaml)
+    netplan_file.chmod(0o600)
+
+    apply_result = subprocess.run(
+        ["netplan", "apply"], capture_output=True, text=True, timeout=30,
+    )
+    if apply_result.returncode != 0:
+        logger.error("netplan apply failed: %s", apply_result.stderr.strip())
+
+    import time as _time
+    for _ in range(15):
+        _time.sleep(1)
+        r = subprocess.run(["ip", "addr", "show", "wlan0"], capture_output=True, text=True)
+        if "inet " in r.stdout:
+            logger.info("WiFi connecté via netplan : SSID=%r", ssid)
+            break
+
+    nm_file = _Path("/etc/NetworkManager/system-connections/GygesLink-WiFi.nmconnection")
+    if nm_file.exists():
+        nm_file.unlink()
 
     logger.info("WiFi configuré : SSID=%r", ssid)
 

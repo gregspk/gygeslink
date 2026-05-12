@@ -27,6 +27,11 @@ if [ -f /data/gygeslink/network.conf ]; then
     done < /data/gygeslink/network.conf
 fi
 
+# ── S'assurer que wlan0 est UP ─────────────────────────────────────
+# wlan0 est géré par netplan+networkd. On la monte ici pour que
+# iw dev wlan0 scan fonctionne même avant que networkd ne soit prêt.
+ip link set wlan0 up 2>/dev/null || true
+
 # ── Désactiver systemd-resolved sur le port 53 ───────────────────
 # systemd-resolved écoute sur 127.0.0.53:53 par défaut, ce qui
 # empêche dnsmasq de démarrer. On le configure pour ne plus lier

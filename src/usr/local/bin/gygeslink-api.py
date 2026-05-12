@@ -32,6 +32,8 @@ from flask import Flask, request, jsonify, Response, stream_with_context
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 
+NETPLAN_WIFI_FILE = Path("/etc/netplan/30-wifis-dhcp.yaml")
+
 DATA_DIR         = Path("/data/gygeslink")
 SETUP_DONE_FILE  = DATA_DIR / "setup-done"
 WG_CONF_FILE     = DATA_DIR / "wg0.conf"
@@ -259,38 +261,21 @@ def _is_wireguard_active() -> bool:
 
 def _is_wifi_connected() -> bool:
     result = subprocess.run(
-        ["nmcli", "-t", "-f", "STATE", "dev", "show", "wlan0"],
-        capture_output=True, text=True,
+        ["iw", "dev", "wlan0", "link"],
+        capture_output=True, text=True, timeout=5,
     )
-    for line in result.stdout.strip().splitlines():
-        if line.strip() == "STATE=100" or line.strip() == "STATE=70":
-            return True
-        if "STATE=" in line:
-            state = line.split("=", 1)[1].strip()
-            if state in ("100", "70"):
-                return True
-    result2 = subprocess.run(
-        ["ip", "route", "list", "dev", "wlan0"],
-        capture_output=True, text=True,
-    )
-    has_ip = "inet " in subprocess.run(
-        ["ip", "addr", "show", "wlan0"],
-        capture_output=True, text=True,
-    ).stdout
-    has_default = "default" in result2.stdout
-    return has_ip and has_default
+    return "Connected to" in result.stdout
 
 
 def _get_wifi_ssid() -> str:
     result = subprocess.run(
-        ["nmcli", "-t", "-f", "active,ssid", "dev", "wifi", "list", "--rescan", "no"],
-        capture_output=True, text=True,
+        ["iw", "dev", "wlan0", "link"],
+        capture_output=True, text=True, timeout=5,
     )
-    for line in result.stdout.strip().splitlines():
-        if line.startswith("yes:"):
-            return line.split(":", 1)[1]
-    if not _is_wifi_connected():
-        return ""
+    for line in result.stdout.splitlines():
+        line = line.strip()
+        if line.startswith("SSID:"):
+            return line.split("SSID:", 1)[1].strip()
     if WIFI_CONF_FILE.exists():
         try:
             with open(WIFI_CONF_FILE, "r") as f:
@@ -435,27 +420,54 @@ def api_config():
 @app.route("/api/wifi/scan", methods=["GET"])
 @limiter.limit("2 per minute")
 def api_wifi_scan():
+    networks = _wifi_scan_iw()
+    return jsonify({"networks": networks})
+
+
+def _wifi_scan_iw() -> list:
+    subprocess.run(["ip", "link", "set", "wlan0", "up"], capture_output=True, timeout=5)
     result = subprocess.run(
-        ["nmcli", "-t", "-f", "ssid,signal,security", "dev", "wifi", "list", "--rescan", "yes"],
+        ["iw", "dev", "wlan0", "scan"],
         capture_output=True, text=True, timeout=30,
     )
+    if result.returncode != 0:
+        logger.warning("iw scan failed: %s", result.stderr.strip())
+        return []
     networks = []
-    seen = set()
-    for line in result.stdout.strip().splitlines():
-        parts = line.split(":")
-        if len(parts) >= 3:
-            ssid = parts[0].strip()
-            if not ssid or ssid in seen:
-                continue
-            seen.add(ssid)
+    current = {}
+    for line in result.stdout.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("BSS "):
+            if current.get("ssid"):
+                networks.append(current)
+            current = {}
+        elif stripped.startswith("SSID:"):
+            current["ssid"] = stripped.split(":", 1)[1].strip()
+        elif stripped.startswith("signal:"):
             try:
-                signal = int(parts[1])
-            except ValueError:
-                signal = 0
-            security = parts[2].strip() if len(parts) > 2 else ""
-            networks.append({"ssid": ssid, "signal": signal, "security": security})
-    networks.sort(key=lambda n: n["signal"], reverse=True)
-    return jsonify({"networks": networks})
+                dbm = float(stripped.split(":")[1].strip().split()[0])
+                quality = min(100, max(0, int((dbm + 100) * 2)))
+            except (ValueError, IndexError):
+                quality = 0
+            current["signal"] = quality
+        elif stripped.startswith("RSN:"):
+            current["security"] = "WPA2"
+        elif stripped.startswith("WPA:"):
+            if current.get("security") != "WPA2":
+                current["security"] = "WPA1"
+        elif stripped.startswith("capability:") and "Privacy" in stripped and "security" not in current:
+            current["security"] = "WEP"
+    if current.get("ssid"):
+        networks.append(current)
+    for n in networks:
+        if "security" not in n:
+            n["security"] = "Open"
+    seen = {}
+    for n in networks:
+        ssid = n["ssid"]
+        if ssid not in seen or n["signal"] > seen[ssid]["signal"]:
+            seen[ssid] = n
+    return sorted(seen.values(), key=lambda x: x["signal"], reverse=True)
 
 
 @app.route("/api/wifi", methods=["POST"])
@@ -485,20 +497,41 @@ def api_wifi():
     WIFI_CONF_FILE.write_text(wifi_config)
     WIFI_CONF_FILE.chmod(0o600)
 
-    nm_file = Path("/etc/NetworkManager/system-connections/GygesLink-WiFi.nmconnection")
-    nm_file.parent.mkdir(parents=True, exist_ok=True)
-    nm_file.write_text(
-        f"[connection]\nid=GygesLink-WiFi\ntype=wifi\ninterface-name=wlan0\nautoconnect=true\n\n"
-        f"[wifi]\nssid={ssid}\nmode=infrastructure\n\n"
-        f"[wifi-security]\nkey-mgmt=wpa-psk\npsk={password}\n\n"
-        f"[ipv4]\nmethod=auto\n\n[ipv6]\nmethod=disabled\n"
+    netplan_yaml = (
+        "network:\n"
+        "  version: 2\n"
+        "  renderer: networkd\n"
+        "  wifis:\n"
+        "    wlan0:\n"
+        "      dhcp4: true\n"
+        "      macaddress: shuffle\n"
+        f'      access-points:\n'
+        f'        "{ssid_escaped}":\n'
+        f'          password: "{password_escaped}"\n'
     )
-    nm_file.chmod(0o600)
+    NETPLAN_WIFI_FILE.write_text(netplan_yaml)
+    NETPLAN_WIFI_FILE.chmod(0o600)
 
-    subprocess.run(["nmcli", "connection", "reload"], capture_output=True)
-    subprocess.run(["nmcli", "connection", "up", "GygesLink-WiFi"], capture_output=True)
+    apply_result = subprocess.run(
+        ["netplan", "apply"], capture_output=True, text=True, timeout=30,
+    )
+    if apply_result.returncode != 0:
+        logger.error("netplan apply failed: %s", apply_result.stderr.strip())
+        return _json_error("netplan_error", f"netplan apply failed: {apply_result.stderr.strip()[:200]}", 500)
 
-    logger.info("WiFi configuré via API : SSID=%r", ssid)
+    connected = False
+    for _ in range(15):
+        time.sleep(1)
+        r = subprocess.run(["ip", "addr", "show", "wlan0"], capture_output=True, text=True)
+        if "inet " in r.stdout:
+            connected = True
+            break
+
+    nm_file = Path("/etc/NetworkManager/system-connections/GygesLink-WiFi.nmconnection")
+    if nm_file.exists():
+        nm_file.unlink()
+
+    logger.info("WiFi configuré via API (netplan) : SSID=%r connected=%s", ssid, connected)
     return _json_ok(message="WiFi configuré.")
 
 
@@ -700,6 +733,7 @@ def api_factory_reset():
         WG_CONF_FILE,
         WG_EXPIRY_FILE,
         PAUSED_FILE,
+        NETPLAN_WIFI_FILE,
     ]
     for f in files_to_delete:
         if f.exists():
@@ -708,15 +742,7 @@ def api_factory_reset():
     BRIDGES_CONF_FILE.write_text("# GygesLink — Bridges obfs4\n")
     BRIDGES_CONF_FILE.chmod(BRIDGES_CONF_PERM)
 
-    nm_result = subprocess.run(
-        ["nmcli", "-t", "-f", "TYPE,UUID", "connection", "show"],
-        capture_output=True, text=True,
-    )
-    for line in nm_result.stdout.strip().splitlines():
-        if "802-11-wireless" in line:
-            uuid = line.split(":", 2)[-1] if ":" in line else ""
-            if uuid:
-                subprocess.run(["nmcli", "connection", "delete", uuid], capture_output=True)
+    subprocess.run(["netplan", "apply"], capture_output=True, timeout=30)
 
     subprocess.Popen(["bash", "-c", "sleep 3 && systemctl reboot"])
     logger.info("Factory reset via API.")

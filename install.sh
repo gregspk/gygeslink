@@ -28,7 +28,7 @@ fi
 
 # ── WiFi (mode dev uniquement) ────────────────────────────────────
 if [ "$MODE" = "dev" ]; then
-    LOG "Configuration du WiFi (mode dev)"
+    LOG "Configuration du WiFi (mode dev) via netplan"
     read -p "SSID WiFi : " WIFI_SSID
     read -p "Mot de passe WiFi : " WIFI_PSK
 
@@ -37,32 +37,23 @@ if [ "$MODE" = "dev" ]; then
         exit 1
     fi
 
-    mkdir -p /etc/NetworkManager/system-connections
-
-    NM_CONN_FILE="/etc/NetworkManager/system-connections/GygesLink-WiFi.nmconnection"
-    cat > "$NM_CONN_FILE" << EOF
-[connection]
-id=GygesLink-WiFi
-type=wifi
-interface-name=wlan0
-autoconnect=true
-
-[wifi]
-ssid=$WIFI_SSID
-mode=infrastructure
-
-[wifi-security]
-key-mgmt=wpa-psk
-psk=$WIFI_PSK
-
-[ipv4]
-method=auto
-
-[ipv6]
-method=disabled
+    # Netplan yaml pour networkd
+    WIFI_SSID_ESCAPED=$(echo "$WIFI_SSID" | sed 's/"/\\"/g')
+    WIFI_PSK_ESCAPED=$(echo "$WIFI_PSK" | sed 's/"/\\"/g')
+    cat > /etc/netplan/30-wifis-dhcp.yaml << EOF
+network:
+  version: 2
+  renderer: networkd
+  wifis:
+    wlan0:
+      dhcp4: true
+      macaddress: shuffle
+      access-points:
+        "$WIFI_SSID_ESCAPED":
+          password: "$WIFI_PSK_ESCAPED"
 EOF
-    chmod 600 "$NM_CONN_FILE"
-    LOG "Connexion WiFi NM configurée : $WIFI_SSID"
+    chmod 600 /etc/netplan/30-wifis-dhcp.yaml
+    LOG "Connexion WiFi netplan configurée : $WIFI_SSID"
 
     mkdir -p /data/gygeslink
     cat > /data/gygeslink/wifi.conf << EOF
@@ -97,7 +88,7 @@ apt update && apt install -y \
     iptables conntrack dnsmasq isc-dhcp-client macchanger wpasupplicant \
     tor obfs4proxy wireguard-tools python3-pip python3-libgpiod \
     i2c-tools git python3-flask python3-flask-limiter python3-requests \
-    python3-aiohttp network-manager
+    python3-aiohttp network-manager iw
 
 # ── Installer aiohttp-socks (absent des dépôts Debian) ───────────
 pip3 install --break-system-packages aiohttp-socks 2>/dev/null || true
@@ -163,11 +154,8 @@ mkdir -p /etc/wireguard
 ln -sf /data/gygeslink/wg0.conf /etc/wireguard/wg0.conf
 LOG "Symlink WireGuard créé : /etc/wireguard/wg0.conf → /data/gygeslink/wg0.conf"
 
-# ── Supprimer les connexions WiFi NM de l'install Armbian ────────
-nmcli -t -f TYPE,NAME connection show 2>/dev/null | grep '802-11-wireless' | cut -d: -f2- | while read -r name; do
-    nmcli connection delete "$name" 2>/dev/null || true
-done
-LOG "Connexions WiFi Armbian supprimées."
+# ── Nettoyer les anciens fichiers NM WiFi si présents ───────────
+rm -f /etc/NetworkManager/system-connections/GygesLink-WiFi.nmconnection 2>/dev/null || true
 
 LOG "============================================"
 LOG "Installation terminée."
