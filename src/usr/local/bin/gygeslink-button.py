@@ -8,8 +8,12 @@ Câblage (Orange Pi Zero 2W — Allwinner H618, header 26-pin) :
   Debounce logiciel : 50ms de stabilité requise.
 
 Comportement :
-  Maintien 5 secondes  → poweroff propre (extinction)
+  Maintien 5 secondes  → suspend-to-RAM (veille, ~0.5W)
   Maintien 20 secondes → factory reset (supprime config + reboot)
+
+Wake from suspend :
+  Le bouton GPIO est configuré comme wake-up source via sysfs.
+  Un appui bref pendant la veille réveille le Pi.
 
 Utilise sysfs (/sys/class/gpio) pour le contrôle GPIO — compatible
 avec tous les kernels, sans dépendance à une version de libgpiod.
@@ -25,7 +29,7 @@ GPIOCHIP    = "/dev/gpiochip1"
 BUTTON_LINE = 269
 
 GPIO_CONF_FILE  = Path("/data/gygeslink/gpio.conf")
-HOLD_DURATION_POWEROFF = 5.0
+HOLD_DURATION_SUSPEND = 5.0
 HOLD_DURATION_RESET   = 20.0
 DEBOUNCE_MS           = 0.05
 POLL_INTERVAL         = 0.02
@@ -77,6 +81,17 @@ def _gpio_export(pin: int) -> None:
         raise RuntimeError(f"Cannot export GPIO {pin} after 5 attempts")
 
 
+def _gpio_enable_wakeup(pin: int) -> None:
+    """Configurer le GPIO comme source de réveil du suspend-to-RAM."""
+    wakeup_path = Path(f"/sys/class/gpio/gpio{pin}/device/power/wakeup")
+    try:
+        if wakeup_path.exists():
+            wakeup_path.write_text("enabled")
+            logger.info("GPIO %d configuré comme wake-up source.", pin)
+    except OSError as e:
+        logger.warning("Impossible d'activer le wake-up sur GPIO %d : %s", pin, e)
+
+
 def _gpio_unexport(pin: int) -> None:
     gpio_path = Path(f"/sys/class/gpio/gpio{pin}")
     if gpio_path.exists():
@@ -104,10 +119,10 @@ def _debounced_read(pin: int, expected: int, stability: float = DEBOUNCE_MS) -> 
     return True
 
 
-def trigger_poweroff() -> None:
-    """Extinction propre du boîtier."""
-    logger.warning("Maintien %.0fs détecté — poweroff.", HOLD_DURATION_POWEROFF)
-    subprocess.run(["systemctl", "poweroff"], check=False)
+def trigger_suspend() -> None:
+    """Suspend-to-RAM : veille à faible consommation, réveil via bouton."""
+    logger.warning("Maintien %.0fs détecté — suspend.", HOLD_DURATION_SUSPEND)
+    subprocess.run(["systemctl", "suspend"], check=False)
 
 
 def trigger_factory_reset() -> None:
@@ -148,14 +163,15 @@ def watch_button() -> None:
     """Boucle principale : surveille le bouton GPIO en polling via sysfs.
 
     Comportements :
-      - Maintien 5s  → poweroff propre
+      - Maintien 5s  → suspend-to-RAM (veille)
       - Maintien 20s → factory reset (supprime config + reboot)
     """
     _gpio_export(BUTTON_LINE)
     _gpio_set_direction(BUTTON_LINE, "in")
+    _gpio_enable_wakeup(BUTTON_LINE)
 
     logger.info(
-        "Surveillance bouton GPIO %d. 5s → poweroff, 20s → factory reset.",
+        "Surveillance bouton GPIO %d. 5s → suspend, 20s → factory reset.",
         BUTTON_LINE,
     )
 
@@ -176,7 +192,7 @@ def watch_button() -> None:
                     if not _debounced_read(BUTTON_LINE, 1):
                         continue
                     held = time.monotonic() - press_time
-                    if held < HOLD_DURATION_POWEROFF:
+                    if held < HOLD_DURATION_SUSPEND:
                         logger.info("Bouton relâché après %.1fs — ignoré.", held)
                     break
 
@@ -185,8 +201,8 @@ def watch_button() -> None:
                     trigger_factory_reset()
                     return
 
-                if held >= HOLD_DURATION_POWEROFF:
-                    trigger_poweroff()
+                if held >= HOLD_DURATION_SUSPEND:
+                    trigger_suspend()
                     return
 
                 time.sleep(POLL_INTERVAL)
