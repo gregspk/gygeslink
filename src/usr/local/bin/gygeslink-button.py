@@ -45,8 +45,8 @@ except ImportError:
 # Si différentes, créer /data/gygeslink/gpio.conf :
 #   GPIOCHIP=gpiochip0
 #   BUTTON_LINE=238
-GPIOCHIP    = "gpiochip0"
-BUTTON_LINE = 238
+GPIOCHIP    = "/dev/gpiochip1"
+BUTTON_LINE = 269
 
 GPIO_CONF_FILE  = Path("/data/gygeslink/gpio.conf")
 HOLD_DURATION   = 5.0
@@ -91,14 +91,6 @@ def _load_gpio_conf() -> None:
     BUTTON_LINE = mapping["BUTTON_LINE"]
 
 
-def _debounced_read(line, expected: int, stability: float = DEBOUNCE_MS) -> bool:
-    start = time.monotonic()
-    while time.monotonic() - start < stability:
-        if line.get_value() != expected:
-            return False
-        time.sleep(0.005)
-    return True
-
 def trigger_setup_reset() -> None:
     """Supprime toute config utilisateur, redémarre en mode setup (factory reset)."""
     logger.warning("Maintien 5s détecté — factory reset.")
@@ -135,6 +127,15 @@ def trigger_setup_reset() -> None:
     subprocess.run(["systemctl", "reboot"], check=False)
 
 
+def _debounced_read(request, line_offset: int, expected: int, stability: float = DEBOUNCE_MS) -> bool:
+    start = time.monotonic()
+    while time.monotonic() - start < stability:
+        values = request.get_values([line_offset])
+        if values[0] != expected:
+            return False
+        time.sleep(0.005)
+    return True
+
 def watch_button() -> None:
     """Boucle principale : surveille le bouton GPIO en polling."""
     if not GPIO_AVAILABLE:
@@ -143,14 +144,12 @@ def watch_button() -> None:
         while True:
             time.sleep(60)
 
-    chip = gpiod.Chip(GPIOCHIP)
-    line = chip.get_line(BUTTON_LINE)
-
-    # Pull-up interne : HIGH = relâché, LOW = pressé
-    line.request(
+    request = gpiod.request_lines(
+        GPIOCHIP,
         consumer="gygeslink-button",
-        type=gpiod.LINE_REQ_DIR_IN,
-        flags=gpiod.LINE_REQ_FLAG_BIAS_PULL_UP,
+        offsets=[BUTTON_LINE],
+        direction=gpiod.line.Direction.INPUT,
+        bias=gpiod.line.Bias.PULL_UP,
     )
 
     logger.info(
@@ -160,20 +159,22 @@ def watch_button() -> None:
 
     try:
         while True:
-            if line.get_value() == 1:
+            values = request.get_values([BUTTON_LINE])
+            if values[0] == 1:
                 time.sleep(POLL_INTERVAL)
                 continue
 
             # ── Potentiel appui : vérifier avec debounce ──────────
-            if not _debounced_read(line, 0):
+            if not _debounced_read(request, BUTTON_LINE, 0):
                 continue
 
             press_time = time.monotonic()
             logger.info("Bouton pressé, décompte %.0fs...", HOLD_DURATION)
 
             while True:
-                if line.get_value() == 1:
-                    if not _debounced_read(line, 1):
+                values = request.get_values([BUTTON_LINE])
+                if values[0] == 1:
+                    if not _debounced_read(request, BUTTON_LINE, 1):
                         continue
                     held = time.monotonic() - press_time
                     logger.info("Bouton relâché après %.1fs — ignoré.", held)
@@ -190,7 +191,7 @@ def watch_button() -> None:
     except KeyboardInterrupt:
         logger.info("Arrêt du daemon bouton.")
     finally:
-        line.release()
+        request.release()
         logger.info("GPIO libéré.")
 
 

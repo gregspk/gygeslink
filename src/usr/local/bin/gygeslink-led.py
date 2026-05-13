@@ -66,10 +66,10 @@ except ImportError:
 #   GPIO_G=235
 #   GPIO_B=236
 #   BUTTON_LINE=238
-GPIOCHIP = "gpiochip0"
-GPIO_R   = 233
-GPIO_G   = 235
-GPIO_B   = 236
+GPIOCHIP = "/dev/gpiochip1"
+GPIO_R   = 226
+GPIO_G   = 227
+GPIO_B   = 261
 
 LED_ACTIVE_LOW = True
 
@@ -124,36 +124,33 @@ logger = logging.getLogger("led")
 
 
 # ─────────────────────────────────────────────────────────────────────
-# Contrôle GPIO via libgpiod
+# Contrôle GPIO via libgpiod v2
 # ─────────────────────────────────────────────────────────────────────
 
-_lines: dict = {}
+_request = None
 
 
 def gpio_setup() -> None:
     """Initialise les lignes GPIO en sortie, LED éteinte."""
-    chip = gpiod.Chip(GPIOCHIP)
-    initial = 1 if LED_ACTIVE_LOW else 0
-    for name, num in [("r", GPIO_R), ("g", GPIO_G), ("b", GPIO_B)]:
-        line = chip.get_line(num)
-        line.request(
-            consumer="gygeslink-led",
-            type=gpiod.LINE_REQ_DIR_OUT,
-            default_vals=[initial],
-        )
-        _lines[name] = line
+    global _request
+    initial = [1, 1, 1] if LED_ACTIVE_LOW else [0, 0, 0]
+    _request = gpiod.request_lines(
+        GPIOCHIP,
+        consumer="gygeslink-led",
+        offsets=[GPIO_R, GPIO_G, GPIO_B],
+        direction=gpiod.line.Direction.OUTPUT,
+        output_values=initial,
+    )
 
 
 def set_color(r: bool, g: bool, b: bool) -> None:
     """Applique une couleur RGB à la LED.
     En mode anode commune (LED_ACTIVE_LOW=True) : LOW = ON, HIGH = OFF.
     """
-    if not GPIO_AVAILABLE or not _lines:
+    if not GPIO_AVAILABLE or _request is None:
         return
     on, off = (0, 1) if LED_ACTIVE_LOW else (1, 0)
-    _lines["r"].set_value(on if r else off)
-    _lines["g"].set_value(on if g else off)
-    _lines["b"].set_value(on if b else off)
+    _request.set_values([on if r else off, on if g else off, on if b else off])
 
 
 def led_off() -> None:
@@ -163,12 +160,13 @@ def led_off() -> None:
 
 def gpio_cleanup() -> None:
     """Libère les lignes GPIO."""
-    for line in _lines.values():
+    global _request
+    if _request is not None:
         try:
-            line.release()
+            _request.release()
         except Exception:
             pass
-    _lines.clear()
+        _request = None
 
 
 # ─────────────────────────────────────────────────────────────────────
