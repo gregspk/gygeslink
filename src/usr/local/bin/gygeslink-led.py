@@ -9,11 +9,13 @@ Câblage GPIO (Orange Pi Zero 2W — Allwinner H618, header 26-pin) :
     gpiodetect                          # lister les chips
     gpioinfo gpiochip0 | grep -i "PH"   # vérifier les lignes PH
 
-  GPIO_R → Pin 11 (PH9)  + résistance 100Ω → anode rouge   (Vf≈2.0V, If≈13mA)
-  GPIO_G → Pin 13 (PH11) + résistance 100Ω → anode verte   (Vf≈2.2V, If≈11mA)
-  GPIO_B → Pin 15 (PH12) + résistance 27Ω  → anode bleue   (Vf≈3.0V, If≈11mA)
-  GND    → cathode commune (Pin 6, 9, 14, 20, 25)
-  NOTE : H618 GPIO = 3.3V. Les résistances 330Ω sont pour 5V (inadaptées ici).
+  LED RGB ANODE COMMUNE (la longue broche va au 3.3V, pas au GND) :
+    Broche longue (anode commune) → Pin 1 (3.3V)
+    Broche 1 (rouge, cathode)  → R 82Ω  → Pin 11 (PH9)
+    Broche 3 (vert, cathode)    → R 22Ω  → Pin 13 (PH11)
+    Broche 4 (bleu, cathode)    → R 22Ω  → Pin 15 (PH12)
+  LOGIQUE INVERSÉE : GPIO LOW = LED ON, GPIO HIGH = LED OFF
+  H618 GPIO = 3.3V. LED diffusée (Vf G/B ≈ 3.0V) compatible 3.3V.
 
   Si les numéros de ligne gpiod diffèrent des valeurs par défaut,
   créer /data/gygeslink/gpio.conf avec les bonnes valeurs (voir ci-dessous).
@@ -56,6 +58,7 @@ except ImportError:
 #   Pin 15 = PH12 = ligne 224+12 = 236  → LED Bleu
 #   Pin  7 = PH14 = ligne 224+14 = 238  → Bouton
 #
+# LED RGB ANODE COMMUNE : GPIO LOW = LED ON, GPIO HIGH = LED OFF
 # VALEURS PAR DÉFAUT — à confirmer avec `gpioinfo gpiochip0` sur le Pi.
 # Si différentes, créer /data/gygeslink/gpio.conf :
 #   GPIOCHIP=gpiochip0
@@ -68,26 +71,35 @@ GPIO_R   = 233
 GPIO_G   = 235
 GPIO_B   = 236
 
+LED_ACTIVE_LOW = True
+
 GPIO_CONF_FILE = Path("/data/gygeslink/gpio.conf")
 
 
 def _load_gpio_conf() -> None:
-    global GPIOCHIP, GPIO_R, GPIO_G, GPIO_B
+    global GPIOCHIP, GPIO_R, GPIO_G, GPIO_B, LED_ACTIVE_LOW
     if not GPIO_CONF_FILE.exists():
         return
-    mapping = {"GPIOCHIP": GPIOCHIP, "GPIO_R": GPIO_R, "GPIO_G": GPIO_G, "GPIO_B": GPIO_B}
+    mapping = {"GPIOCHIP": GPIOCHIP, "GPIO_R": GPIO_R, "GPIO_G": GPIO_G, "GPIO_B": GPIO_B, "LED_ACTIVE_LOW": str(LED_ACTIVE_LOW)}
     for line in GPIO_CONF_FILE.read_text().splitlines():
         line = line.strip()
         if not line or line.startswith("#"):
             continue
         key, _, val = line.partition("=")
         key = key.strip()
+        val = val.strip()
         if key in mapping:
-            mapping[key] = int(val.strip()) if key != "GPIOCHIP" else val.strip()
+            if key == "GPIOCHIP":
+                mapping[key] = val
+            elif key == "LED_ACTIVE_LOW":
+                mapping[key] = val.lower() in ("true", "1", "yes")
+            else:
+                mapping[key] = int(val)
     GPIOCHIP = mapping["GPIOCHIP"]
     GPIO_R = mapping["GPIO_R"]
     GPIO_G = mapping["GPIO_G"]
     GPIO_B = mapping["GPIO_B"]
+    LED_ACTIVE_LOW = mapping["LED_ACTIVE_LOW"]
 
 
 SETUP_DONE_FILE  = Path("/data/gygeslink/setup-done")
@@ -121,23 +133,27 @@ _lines: dict = {}
 def gpio_setup() -> None:
     """Initialise les lignes GPIO en sortie, LED éteinte."""
     chip = gpiod.Chip(GPIOCHIP)
+    initial = 1 if LED_ACTIVE_LOW else 0
     for name, num in [("r", GPIO_R), ("g", GPIO_G), ("b", GPIO_B)]:
         line = chip.get_line(num)
         line.request(
             consumer="gygeslink-led",
             type=gpiod.LINE_REQ_DIR_OUT,
-            default_vals=[0],
+            default_vals=[initial],
         )
         _lines[name] = line
 
 
 def set_color(r: bool, g: bool, b: bool) -> None:
-    """Applique une couleur RGB à la LED."""
+    """Applique une couleur RGB à la LED.
+    En mode anode commune (LED_ACTIVE_LOW=True) : LOW = ON, HIGH = OFF.
+    """
     if not GPIO_AVAILABLE or not _lines:
         return
-    _lines["r"].set_value(1 if r else 0)
-    _lines["g"].set_value(1 if g else 0)
-    _lines["b"].set_value(1 if b else 0)
+    on, off = (0, 1) if LED_ACTIVE_LOW else (1, 0)
+    _lines["r"].set_value(on if r else off)
+    _lines["g"].set_value(on if g else off)
+    _lines["b"].set_value(on if b else off)
 
 
 def led_off() -> None:

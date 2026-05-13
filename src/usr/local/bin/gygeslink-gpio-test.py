@@ -7,6 +7,8 @@ Teste chaque ligne GPIO configurée dans /data/gygeslink/gpio.conf :
   2. Lit l'état du bouton en continu pendant 10s
   3. Affiche les correspondances Pin ↔ gpiod line
 
+LED RGB ANODE COMMUNE : GPIO LOW = LED ON, GPIO HIGH = LED OFF
+
 Usage :
   sudo python3 /usr/local/bin/gygeslink-gpio-test.py
 """
@@ -31,6 +33,8 @@ DEFAULTS = {
     "GPIO_B": 236,
     "BUTTON_LINE": 238,
 }
+
+LED_ACTIVE_LOW = True
 
 PIN_MAP = {
     "GPIO_R": "Pin 11 (PH9) — LED Rouge",
@@ -95,20 +99,22 @@ def test_led(chip_name, gpio_r, gpio_g, gpio_b):
     ]
 
     lines = {}
+    initial = 1 if LED_ACTIVE_LOW else 0
+    on, off = (0, 1) if LED_ACTIVE_LOW else (1, 0)
     for name, num in [("r", gpio_r), ("g", gpio_g), ("b", gpio_b)]:
         line = chip.get_line(num)
-        line.request(consumer="gpio-test", type=gpiod.LINE_REQ_DIR_OUT, default_vals=[0])
+        line.request(consumer="gpio-test", type=gpiod.LINE_REQ_DIR_OUT, default_vals=[initial])
         lines[name] = line
 
     for color_name, _, r, g, b in colors:
         print(f"  Allumage {color_name} (2s)... ", end="", flush=True)
-        lines["r"].set_value(1 if r else 0)
-        lines["g"].set_value(1 if g else 0)
-        lines["b"].set_value(1 if b else 0)
+        lines["r"].set_value(on if r else off)
+        lines["g"].set_value(on if g else off)
+        lines["b"].set_value(on if b else off)
         time.sleep(2)
-        lines["r"].set_value(0)
-        lines["g"].set_value(0)
-        lines["b"].set_value(0)
+        lines["r"].set_value(off)
+        lines["g"].set_value(off)
+        lines["b"].set_value(off)
         print("OK")
 
     for line in lines.values():
