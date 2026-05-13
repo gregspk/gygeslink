@@ -16,11 +16,11 @@ Before=time-sync.target
 Type=oneshot
 RemainAfterExit=yes
 
-# Lit l'heure depuis le DS3231 (I2C) et l'applique à l'horloge système.
-# --hctosys = Hardware Clock TO System
-# Requiert que I2C soit activé (armbian-config → System → Hardware → i2c1)
-# et que le module rtc-ds1307 soit chargé (ajouté dans /etc/modules).
-ExecStart=/sbin/hwclock --hctosys
+# Lit l'heure depuis le DS3231 (I2C) via sysfs et l'applique à l'horloge système.
+# hwclock n'existe plus dans util-linux 2.41+ (Armbian Bookworm).
+# Alternative : lire /sys/class/rtc/rtc0/{time,date} et appliquer via date -s.
+# Requiert que I2C soit activé et que le module rtc-ds1307 soit chargé.
+ExecStart=/usr/local/bin/gygeslink-rtc-sync.sh
 
 [Install]
 WantedBy=multi-user.target
