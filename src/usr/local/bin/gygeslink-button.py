@@ -3,11 +3,7 @@
 GygesLink — Daemon de surveillance du bouton GPIO (Orange Pi Zero 2W)
 
 Câblage (Orange Pi Zero 2W — Allwinner H618, header 26-pin) :
-  Vérification obligatoire avant déploiement :
-    gpiodetect                          # lister les chips
-    gpioinfo gpiochip0 | grep -i "PH"   # vérifier les lignes PH
-
-  Bouton connecté entre Pin 7 (PH14) et GND (Pin 9).
+  Bouton connecté entre Pin 7 (PI13/GPIO 269) et GND (Pin 9).
   Pull-up interne activée : HIGH = relâché, LOW = pressé.
   Debounce logiciel : 50ms de stabilité requise.
 
@@ -15,11 +11,8 @@ Comportement :
   Maintien 5 secondes → supprime /data/gygeslink/setup-done → reboot
   Le boîtier redémarre en mode setup.
 
-Cas d'usage :
-  - Changer de tier (Classic ↔ Advanced)
-  - Reconfigurer les credentials WiFi
-  - Reconfigurer le compte Mullvad
-  - Réinitialisation après une mauvaise config
+Utilise sysfs (/sys/class/gpio) pour le contrôle GPIO — compatible
+avec tous les kernels, sans dépendance à une version de libgpiod.
 """
 
 import logging
@@ -28,23 +21,6 @@ import sys
 import time
 from pathlib import Path
 
-try:
-    import gpiod
-    GPIO_AVAILABLE = True
-except ImportError:
-    GPIO_AVAILABLE = False
-
-# ─────────────────────────────────────────────────────────────────────
-# Configuration GPIO (Orange Pi Zero 2W — Allwinner H618)
-# ─────────────────────────────────────────────────────────────────────
-# H618 GPIO Port H : base = 7 × 32 = 224 dans gpiod (gpiochip0)
-# Header 26-pin → correspondances physiques :
-#   Pin  7 = PH14 = ligne 224+14 = 238  → Bouton
-#
-# VALEURS PAR DÉFAUT — à confirmer avec `gpioinfo gpiochip0` sur le Pi.
-# Si différentes, créer /data/gygeslink/gpio.conf :
-#   GPIOCHIP=gpiochip0
-#   BUTTON_LINE=238
 GPIOCHIP    = "/dev/gpiochip1"
 BUTTON_LINE = 269
 
@@ -54,10 +30,6 @@ DEBOUNCE_MS     = 0.05
 POLL_INTERVAL   = 0.02
 SETUP_DONE_FILE = Path("/data/gygeslink/setup-done")
 
-# ─────────────────────────────────────────────────────────────────────
-# Logging
-# ─────────────────────────────────────────────────────────────────────
-
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [button] %(levelname)s %(message)s",
@@ -66,19 +38,14 @@ logging.basicConfig(
 )
 logger = logging.getLogger("button")
 
-
-# ─────────────────────────────────────────────────────────────────────
-# Logique bouton
-# ─────────────────────────────────────────────────────────────────────
-
 WIFI_CONF_FILE = Path("/data/gygeslink/wifi.conf")
 
 
 def _load_gpio_conf() -> None:
-    global GPIOCHIP, BUTTON_LINE
+    global BUTTON_LINE
     if not GPIO_CONF_FILE.exists():
         return
-    mapping = {"GPIOCHIP": GPIOCHIP, "BUTTON_LINE": BUTTON_LINE}
+    mapping = {"BUTTON_LINE": BUTTON_LINE}
     for line in GPIO_CONF_FILE.read_text().splitlines():
         line = line.strip()
         if not line or line.startswith("#"):
@@ -86,9 +53,37 @@ def _load_gpio_conf() -> None:
         key, _, val = line.partition("=")
         key = key.strip()
         if key in mapping:
-            mapping[key] = int(val.strip()) if key != "GPIOCHIP" else val.strip()
-    GPIOCHIP = mapping["GPIOCHIP"]
+            mapping[key] = int(val.strip())
     BUTTON_LINE = mapping["BUTTON_LINE"]
+
+
+def _gpio_export(pin: int) -> None:
+    gpio_path = Path(f"/sys/class/gpio/gpio{pin}")
+    if not gpio_path.exists():
+        Path("/sys/class/gpio/export").write_text(str(pin))
+
+
+def _gpio_unexport(pin: int) -> None:
+    gpio_path = Path(f"/sys/class/gpio/gpio{pin}")
+    if gpio_path.exists():
+        Path("/sys/class/gpio/unexport").write_text(str(pin))
+
+
+def _gpio_set_direction(pin: int, direction: str) -> None:
+    Path(f"/sys/class/gpio/gpio{pin}/direction").write_text(direction)
+
+
+def _gpio_get_value(pin: int) -> int:
+    return int(Path(f"/sys/class/gpio/gpio{pin}/value").read_text().strip())
+
+
+def _debounced_read(pin: int, expected: int, stability: float = DEBOUNCE_MS) -> bool:
+    start = time.monotonic()
+    while time.monotonic() - start < stability:
+        if _gpio_get_value(pin) != expected:
+            return False
+        time.sleep(0.005)
+    return True
 
 
 def trigger_setup_reset() -> None:
@@ -112,13 +107,11 @@ def trigger_setup_reset() -> None:
             except OSError as e:
                 logger.error("Impossible de supprimer %s : %s", f, e)
 
-    # bridges.conf MUST exist (even empty) — torrc %include crashes if file absent
     bridges = Path("/data/gygeslink/bridges.conf")
     bridges.write_text("# GygesLink — Bridges obfs4\n")
     bridges.chmod(0o644)
     logger.info("bridges.conf réinitialisé (vide).")
 
-    # Arrêter WireGuard si actif
     subprocess.run(["wg-quick", "down", "wg0"], check=False,
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
@@ -127,54 +120,31 @@ def trigger_setup_reset() -> None:
     subprocess.run(["systemctl", "reboot"], check=False)
 
 
-def _debounced_read(request, line_offset: int, expected: int, stability: float = DEBOUNCE_MS) -> bool:
-    start = time.monotonic()
-    while time.monotonic() - start < stability:
-        values = request.get_values([line_offset])
-        if values[0] != expected:
-            return False
-        time.sleep(0.005)
-    return True
-
 def watch_button() -> None:
-    """Boucle principale : surveille le bouton GPIO en polling."""
-    if not GPIO_AVAILABLE:
-        logger.warning("gpiod non disponible — bouton désactivé.")
-        logger.warning("Installer : apt install python3-libgpiod")
-        while True:
-            time.sleep(60)
-
-    request = gpiod.request_lines(
-        GPIOCHIP,
-        consumer="gygeslink-button",
-        offsets=[BUTTON_LINE],
-        direction=gpiod.line.Direction.INPUT,
-        bias=gpiod.line.Bias.PULL_UP,
-    )
+    """Boucle principale : surveille le bouton GPIO en polling via sysfs."""
+    _gpio_export(BUTTON_LINE)
+    _gpio_set_direction(BUTTON_LINE, "in")
 
     logger.info(
-        "Surveillance bouton %s ligne %d. Maintien %ds → reset setup.",
-        GPIOCHIP, BUTTON_LINE, int(HOLD_DURATION),
+        "Surveillance bouton GPIO %d. Maintien %ds → reset setup.",
+        BUTTON_LINE, int(HOLD_DURATION),
     )
 
     try:
         while True:
-            values = request.get_values([BUTTON_LINE])
-            if values[0] == 1:
+            if _gpio_get_value(BUTTON_LINE) == 1:
                 time.sleep(POLL_INTERVAL)
                 continue
 
-            # ── Potentiel appui : vérifier avec debounce ──────────
-            if not _debounced_read(request, BUTTON_LINE, 0):
+            if not _debounced_read(BUTTON_LINE, 0):
                 continue
 
             press_time = time.monotonic()
             logger.info("Bouton pressé, décompte %.0fs...", HOLD_DURATION)
 
             while True:
-                values = request.get_values([BUTTON_LINE])
-                if values[0] == 1:
-                    if not _debounced_read(request, BUTTON_LINE, 1):
+                if _gpio_get_value(BUTTON_LINE) == 1:
+                    if not _debounced_read(BUTTON_LINE, 1):
                         continue
                     held = time.monotonic() - press_time
                     logger.info("Bouton relâché après %.1fs — ignoré.", held)
@@ -191,13 +161,9 @@ def watch_button() -> None:
     except KeyboardInterrupt:
         logger.info("Arrêt du daemon bouton.")
     finally:
-        request.release()
+        _gpio_unexport(BUTTON_LINE)
         logger.info("GPIO libéré.")
 
-
-# ─────────────────────────────────────────────────────────────────────
-# Point d'entrée
-# ─────────────────────────────────────────────────────────────────────
 
 def main() -> None:
     _load_gpio_conf()
