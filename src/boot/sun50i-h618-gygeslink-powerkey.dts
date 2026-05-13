@@ -9,10 +9,6 @@
 		__overlay__ {
 			gygeslink_powerkey {
 				compatible = "gpio-keys";
-				pinctrl-names = "default";
-				pinctrl-0 = <&gygeslink_powerkey_pins>;
-				#address-cells = <1>;
-				#size-cells = <0>;
 
 				powerkey {
 					label = "gygeslink-powerkey";
@@ -21,17 +17,6 @@
 					debounce-interval = <50>;
 					wakeup-source;
 				};
-			};
-		};
-	};
-
-	fragment@1 {
-		target = <&pio>;
-		__overlay__ {
-			gygeslink_powerkey_pins: gygeslink-powerkey-pins {
-				pins = "PI13";
-				function = "gpio_in";
-				bias-pull-up;
 			};
 		};
 	};
