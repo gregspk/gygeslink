@@ -57,24 +57,37 @@ def _load_gpio_conf() -> None:
     BUTTON_LINE = mapping["BUTTON_LINE"]
 
 
+def _gpio_write(path: str, value: str) -> None:
+    with open(path, "w") as f:
+        f.write(value)
+
+
 def _gpio_export(pin: int) -> None:
     gpio_path = Path(f"/sys/class/gpio/gpio{pin}")
     if not gpio_path.exists():
-        Path("/sys/class/gpio/export").write_text(str(pin))
+        try:
+            _gpio_write("/sys/class/gpio/export", str(pin))
+        except OSError:
+            if not gpio_path.exists():
+                raise
 
 
 def _gpio_unexport(pin: int) -> None:
     gpio_path = Path(f"/sys/class/gpio/gpio{pin}")
     if gpio_path.exists():
-        Path("/sys/class/gpio/unexport").write_text(str(pin))
+        try:
+            _gpio_write("/sys/class/gpio/unexport", str(pin))
+        except OSError:
+            pass
 
 
 def _gpio_set_direction(pin: int, direction: str) -> None:
-    Path(f"/sys/class/gpio/gpio{pin}/direction").write_text(direction)
+    _gpio_write(f"/sys/class/gpio/gpio{pin}/direction", direction)
 
 
 def _gpio_get_value(pin: int) -> int:
-    return int(Path(f"/sys/class/gpio/gpio{pin}/value").read_text().strip())
+    with open(f"/sys/class/gpio/gpio{pin}/value", "r") as f:
+        return int(f.read().strip())
 
 
 def _debounced_read(pin: int, expected: int, stability: float = DEBOUNCE_MS) -> bool:

@@ -86,27 +86,39 @@ def _load_gpio_conf() -> None:
 _gpio_exported = set()
 
 
+def _gpio_write(path: str, value: str) -> None:
+    with open(path, "w") as f:
+        f.write(value)
+
+
 def gpio_export(pin: int) -> None:
     if pin in _gpio_exported:
         return
     gpio_path = Path(f"/sys/class/gpio/gpio{pin}")
     if not gpio_path.exists():
-        Path("/sys/class/gpio/export").write_text(str(pin))
+        try:
+            _gpio_write("/sys/class/gpio/export", str(pin))
+        except OSError:
+            if not gpio_path.exists():
+                raise
     _gpio_exported.add(pin)
 
 
 def gpio_set_direction(pin: int, direction: str) -> None:
-    Path(f"/sys/class/gpio/gpio{pin}/direction").write_text(direction)
+    _gpio_write(f"/sys/class/gpio/gpio{pin}/direction", direction)
 
 
 def gpio_set_value(pin: int, value: int) -> None:
-    Path(f"/sys/class/gpio/gpio{pin}/value").write_text(str(value))
+    _gpio_write(f"/sys/class/gpio/gpio{pin}/value", str(value))
 
 
 def gpio_unexport(pin: int) -> None:
     gpio_path = Path(f"/sys/class/gpio/gpio{pin}")
     if gpio_path.exists():
-        Path("/sys/class/gpio/unexport").write_text(str(pin))
+        try:
+            _gpio_write("/sys/class/gpio/unexport", str(pin))
+        except OSError:
+            pass
     _gpio_exported.discard(pin)
 
 
