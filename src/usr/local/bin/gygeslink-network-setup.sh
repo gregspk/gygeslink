@@ -3,7 +3,7 @@
 # Exécuté par gygeslink-network-setup.service (Type=oneshot)
 #
 # ARCHITECTURE RÉSEAU :
-#   - wlan0 : géré par NetworkManager (WiFi + DHCP + MAC random)
+#   - wlan0 : géré par netplan+systemd-networkd (WiFi + DHCP + MAC random)
 #   - usb0/usb1 : configuré ici (USB gadget NCM, côté PC)
 #   - iptables : fail-close appliqué ici AVANT que Tor ne démarre
 
@@ -34,7 +34,7 @@ fi
 macchanger -r wlan0 2>/dev/null || true
 
 # ── S'assurer que wlan0 est UP ─────────────────────────────────────
-# wlan0 est géré par netplan+networkd. On la monte ici pour que
+# wlan0 est géré par netplan+systemd-networkd. On la monte ici pour que
 # iw dev wlan0 scan fonctionne même avant que networkd ne soit prêt.
 ip link set wlan0 up 2>/dev/null || true
 
@@ -106,7 +106,7 @@ fi
 if [ ! -f /data/gygeslink/wifi.conf ]; then
     ERR "Pas de wifi.conf — mode setup."
 else
-    LOG "Attente IPv4 sur wlan0 (NetworkManager)..."
+    LOG "Attente IPv4 sur wlan0..."
     WAITED=0
     while [ "$WAITED" -lt 30 ]; do
         if ip addr show wlan0 2>/dev/null | grep -q "inet "; then

@@ -63,11 +63,6 @@ def _gpio_write(path: str, value: str) -> None:
         f.write(value)
 
 
-def _gpio_write(path: str, value: str) -> None:
-    with open(path, "w") as f:
-        f.write(value)
-
-
 def _gpio_export(pin: int) -> None:
     gpio_path = Path(f"/sys/class/gpio/gpio{pin}")
     if gpio_path.exists():

@@ -29,6 +29,28 @@ fi
 
 case "$1" in
     open)
+        # ── Attendre que Tor soit réellement opérationnel ──────────
+        # Les règles de redirection pointent vers TransPort 9040 et
+        # DNSPort 5353. Si Tor n'écoute pas encore, les paquets du
+        # PC sont redirigés vers des ports fermés = connexion refusée.
+        # Ce n'est PAS une fuite de trafic (fail-close reste actif),
+        # mais c'est un mauvais UX. On attend 180s max.
+        log "Attente du bootstrap Tor (port 9040)..."
+        MAX_BOOTSTRAP=180
+        WAITED=0
+        while [ "$WAITED" -lt "$MAX_BOOTSTRAP" ]; do
+            if ss -tlnp 2>/dev/null | grep -q ":9040 "; then
+                log "Tor TransPort 9040 en écoute — bootstrap OK."
+                break
+            fi
+            sleep 1
+            WAITED=$((WAITED + 1))
+        done
+        if [ "$WAITED" -ge "$MAX_BOOTSTRAP" ]; then
+            err "Timeout : Tor n'a pas bootstrappé en ${MAX_BOOTSTRAP}s."
+            err "Les règles iptables vont être appliquées malgré tout (trafic = erreur de connexion, pas de leak)."
+        fi
+
         log "Application des règles iptables-tor..."
         if iptables-restore < /tmp/iptables-tor-active.rules 2>/tmp/iptables-restore-err.log; then
             log "iptables-restore OK (tor rules)"

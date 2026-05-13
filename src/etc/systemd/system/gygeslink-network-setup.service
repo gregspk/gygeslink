@@ -1,13 +1,13 @@
 [Unit]
 Description=GygesLink — Configuration usb0 + iptables fail-close
 # Ce service configure usb0 et applique iptables.
-# wlan0 est géré par NetworkManager — on n'y touche PAS.
-# On attend que NetworkManager soit prêt (il gère le WiFi).
+# wlan0 est géré par netplan+systemd-networkd — on n'y touche PAS.
+# On attend que le réseau soit prêt (y compris WiFi via networkd).
 
 After=gygeslink-usb-gadget.service
-After=NetworkManager-wait-online.service
+After=systemd-networkd-wait-online.service
 Wants=gygeslink-usb-gadget.service
-Wants=NetworkManager-wait-online.service
+Wants=systemd-networkd-wait-online.service
 
 Before=network-online.target
 
@@ -16,11 +16,12 @@ Type=oneshot
 RemainAfterExit=yes
 
 # Le script fait :
-#   1. Configurer usb0 (192.168.100.1/24) — USB gadget côté PC
-#   2. Lancer dnsmasq (DHCP pour le PC sur usb0)
-#   3. Attendre que wlan0 obtienne une IPv4 via NetworkManager
-#   4. Appliquer iptables fail-close atomiquement
-#   5. Ouvrir le portail HTTPS si setup-done absent
+#   1. Randomiser l'adresse MAC de wlan0 (anti-tracking FAI)
+#   2. Configurer usb0 (192.168.100.1/24) — USB gadget côté PC
+#   3. Lancer dnsmasq (DHCP pour le PC sur usb0)
+#   4. Attendre que wlan0 obtienne une IPv4 via networkd
+#   5. Appliquer iptables fail-close atomiquement
+#   6. Ouvrir le portail HTTPS si setup-done absent
 ExecStart=/usr/local/bin/gygeslink-network-setup.sh
 
 # En cas d'échec, le trafic reste bloqué (iptables DROP est appliqué).

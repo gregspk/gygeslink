@@ -2,6 +2,18 @@
 # Remplacent les règles drop une fois que Tor a bootstrappé à 100%.
 # Si Tor s'arrête, gygeslink-iptables-open.service restaure les règles drop.
 
+*raw
+:PREROUTING ACCEPT [0:0]
+:OUTPUT ACCEPT [0:0]
+
+# Réduire le timeout conntrack des connexions TCP established
+# Par défaut : 432000s (5 jours) → table surchargée, memory leak
+# 600s (10 min) : suffisant pour Tor, évite l'épuisement mémoire
+-A PREROUTING -p tcp -m state --state ESTABLISHED,RELATED -j CT --timeout 600
+-A PREROUTING -p udp -m state --state ESTABLISHED,RELATED -j CT --timeout 60
+
+COMMIT
+
 # ─────────────────────────────────────────────────────────────────────
 # TABLE NAT — redirection transparente vers Tor
 # ─────────────────────────────────────────────────────────────────────

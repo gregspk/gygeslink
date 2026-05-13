@@ -142,8 +142,8 @@ systemctl enable gygeslink-jitter.service
 systemctl enable gygeslink-noise.service
 systemctl enable gygeslink-api.service
 systemctl enable gygeslink-wireguard.service
-systemctl disable gygeslink-led.service 2>/dev/null || true
-systemctl disable gygeslink-button.service 2>/dev/null || true
+systemctl enable gygeslink-led.service
+systemctl enable gygeslink-button.service
 
 # ── Symlink WireGuard ────────────────────────────────────────────
 # wg-quick cherche /etc/wireguard/wg0.conf — le fichier réel est sur
