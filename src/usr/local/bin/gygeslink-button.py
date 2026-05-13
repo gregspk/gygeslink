@@ -27,8 +27,8 @@ BUTTON_LINE = 269
 GPIO_CONF_FILE  = Path("/data/gygeslink/gpio.conf")
 HOLD_DURATION_REBOOT = 5.0
 HOLD_DURATION_RESET   = 20.0
-DEBOUNCE_MS           = 0.05
-POLL_INTERVAL         = 0.02
+DEBOUNCE_MS           = 0.2
+POLL_INTERVAL         = 0.05
 SETUP_DONE_FILE = Path("/data/gygeslink/setup-done")
 
 logging.basicConfig(
@@ -153,6 +153,7 @@ def watch_button() -> None:
     """
     _gpio_export(BUTTON_LINE)
     _gpio_set_direction(BUTTON_LINE, "in")
+    logger.info("Valeur GPIO %d au démarrage : %d", BUTTON_LINE, _gpio_get_value(BUTTON_LINE))
 
     logger.info(
         "Surveillance bouton GPIO %d. 5s → reboot, 20s → factory reset.",
@@ -169,10 +170,11 @@ def watch_button() -> None:
                 continue
 
             press_time = time.monotonic()
-            logger.info("Bouton pressé, décompte...")
+            logger.info("Bouton pressé — décompte.")
 
             while True:
-                if _gpio_get_value(BUTTON_LINE) == 1:
+                val = _gpio_get_value(BUTTON_LINE)
+                if val == 1:
                     if not _debounced_read(BUTTON_LINE, 1):
                         continue
                     held = time.monotonic() - press_time
