@@ -21,11 +21,11 @@ Utilise sysfs (/sys/class/gpio) pour le contrôle GPIO — compatible
 avec tous les kernels, sans dépendance à une version de libgpiod.
 
 États :
-  Bleu clignotant rapide  (0.3s ON / 0.3s OFF)  → Mode setup (premier boot)
-  Rouge clignotant rapide (0.5s ON / 0.5s OFF)  → Erreur critique, trafic BLOQUÉ
-  Orange fixe                                   → Tor OK, protection partielle
-  Orange clignotant lent  (1s ON / 2s OFF)      → Voucher Mullvad expire < 7j
-  Vert fixe                                     → Protection complète
+  Blanc clignotant rapide (0.3s ON / 0.3s OFF) → Mode setup (premier boot) ou démarrage
+  Bleu fixe                              → Fonctionnement normal, protection complète
+  Orange fixe                            → Mode pause (trafic non anonymisé)
+  Orange clignotant lent (1s ON / 2s OFF) → Voucher Mullvad expire < 7j
+  Rouge clignotant rapide (0.5s ON / 0.5s OFF) → Erreur critique, trafic BLOQUÉ
 """
 
 import logging
@@ -218,7 +218,7 @@ def get_system_state() -> str:
 
 
 def blink_setup() -> None:
-    set_color(False, False, True)
+    set_color(True, True, True)
     time.sleep(0.3)
     led_off()
     time.sleep(0.3)
@@ -244,12 +244,12 @@ def blink_expiring() -> None:
 
 
 def show_ok() -> None:
-    set_color(False, True, False)
+    set_color(False, False, True)
     time.sleep(2.0)
 
 
 def show_paused() -> None:
-    set_color(False, False, True)
+    set_color(True, True, False)
     time.sleep(2.0)
 
 
