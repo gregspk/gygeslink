@@ -8,8 +8,8 @@ Câblage (Orange Pi Zero 2W — Allwinner H618, header 26-pin) :
   Debounce logiciel : 50ms de stabilité requise.
 
 Comportement :
-  Maintien 5 secondes → supprime /data/gygeslink/setup-done → reboot
-  Le boîtier redémarre en mode setup.
+  Maintien 5 secondes  → poweroff propre (extinction)
+  Maintien 20 secondes → factory reset (supprime config + reboot)
 
 Utilise sysfs (/sys/class/gpio) pour le contrôle GPIO — compatible
 avec tous les kernels, sans dépendance à une version de libgpiod.
@@ -25,9 +25,10 @@ GPIOCHIP    = "/dev/gpiochip1"
 BUTTON_LINE = 269
 
 GPIO_CONF_FILE  = Path("/data/gygeslink/gpio.conf")
-HOLD_DURATION   = 5.0
-DEBOUNCE_MS     = 0.05
-POLL_INTERVAL   = 0.02
+HOLD_DURATION_POWEROFF = 5.0
+HOLD_DURATION_RESET   = 20.0
+DEBOUNCE_MS           = 0.05
+POLL_INTERVAL         = 0.02
 SETUP_DONE_FILE = Path("/data/gygeslink/setup-done")
 
 logging.basicConfig(
@@ -108,9 +109,15 @@ def _debounced_read(pin: int, expected: int, stability: float = DEBOUNCE_MS) -> 
     return True
 
 
-def trigger_setup_reset() -> None:
-    """Supprime toute config utilisateur, redémarre en mode setup (factory reset)."""
-    logger.warning("Maintien 5s détecté — factory reset.")
+def trigger_poweroff() -> None:
+    """Extinction propre du boîtier."""
+    logger.warning("Maintien %.0fs détecté — poweroff.", HOLD_DURATION_POWEROFF)
+    subprocess.run(["systemctl", "poweroff"], check=False)
+
+
+def trigger_factory_reset() -> None:
+    """Factory reset : supprime toute config utilisateur et redémarre en mode setup."""
+    logger.warning("Maintien %.0fs détecté — factory reset.", HOLD_DURATION_RESET)
 
     files_to_delete = [
         SETUP_DONE_FILE,
@@ -143,13 +150,18 @@ def trigger_setup_reset() -> None:
 
 
 def watch_button() -> None:
-    """Boucle principale : surveille le bouton GPIO en polling via sysfs."""
+    """Boucle principale : surveille le bouton GPIO en polling via sysfs.
+
+    Comportements :
+      - Maintien 5s  → poweroff propre
+      - Maintien 20s → factory reset (supprime config + reboot)
+    """
     _gpio_export(BUTTON_LINE)
     _gpio_set_direction(BUTTON_LINE, "in")
 
     logger.info(
-        "Surveillance bouton GPIO %d. Maintien %ds → reset setup.",
-        BUTTON_LINE, int(HOLD_DURATION),
+        "Surveillance bouton GPIO %d. 5s → poweroff, 20s → factory reset.",
+        BUTTON_LINE,
     )
 
     try:
@@ -162,20 +174,24 @@ def watch_button() -> None:
                 continue
 
             press_time = time.monotonic()
-            logger.info("Bouton pressé, décompte %.0fs...", HOLD_DURATION)
+            logger.info("Bouton pressé, décompte...")
 
             while True:
                 if _gpio_get_value(BUTTON_LINE) == 1:
                     if not _debounced_read(BUTTON_LINE, 1):
                         continue
                     held = time.monotonic() - press_time
-                    logger.info("Bouton relâché après %.1fs — ignoré.", held)
+                    if held < HOLD_DURATION_POWEROFF:
+                        logger.info("Bouton relâché après %.1fs — ignoré.", held)
                     break
 
                 held = time.monotonic() - press_time
-                if held >= HOLD_DURATION:
-                    trigger_setup_reset()
-                    logger.error("Reboot non déclenché — vérifier systemctl.")
+                if held >= HOLD_DURATION_RESET:
+                    trigger_factory_reset()
+                    return
+
+                if held >= HOLD_DURATION_POWEROFF:
+                    trigger_poweroff()
                     return
 
                 time.sleep(POLL_INTERVAL)

@@ -1,0 +1,47 @@
+/dts-v1/;
+/plugin/;
+
+/*
+ * GygesLink — Wake-up button overlay for Orange Pi Zero 2W (H618)
+ *
+ * Configures GPIO PI13 (Pin 7) as a power key wake-up source.
+ * Pressing the button powers on from off state (after poweroff).
+ *
+ * Install:
+ *   dtc -O dtb -o /boot/dtb/allwinner/overlay/sun50i-h618-gygeslink-powerkey.dtbo sun50i-h618-gygeslink-powerkey.dts
+ *   Add to /boot/armbianEnv.txt: overlays=dwc2 gygeslink-powerkey
+ */
+
+/ {
+    compatible = "allwinner,sun50i-h618";
+
+    fragment@0 {
+        target = <&r_pio>;
+        __overlay__ {
+            gygeslink_powerkey: gygeslink-powerkey {
+                pins = "PI13";
+                function = "gpio_in";
+                bias-pull-up;
+            };
+        };
+    };
+
+    fragment@1 {
+        target-path = "/";
+        __overlay__ {
+            gygeslink_powerkey {
+                compatible = "gpio-keys";
+                #address-cells = <1>;
+                #size-cells = <0>;
+
+                powerkey {
+                    label = "gygeslink-powerkey";
+                    linux,code = <116>; /* KEY_POWER */
+                    gpios = <&r_pio 8 13 GPIO_ACTIVE_LOW>; /* PI13 = Port I pin 13 */
+                    debounce-interval = <50>;
+                    wakeup-source;
+                };
+            };
+        };
+    };
+};
