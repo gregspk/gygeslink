@@ -91,17 +91,34 @@ def _gpio_write(path: str, value: str) -> None:
         f.write(value)
 
 
+def _cleanup_stale_gpio() -> None:
+    for entry in Path("/sys/class/gpio").iterdir():
+        name = entry.name
+        if name.startswith("gpio") and name[4:].isdigit():
+            pin = int(name[4:])
+            if pin not in (GPIO_R, GPIO_G, GPIO_B):
+                try:
+                    _gpio_write("/sys/class/gpio/unexport", str(pin))
+                except OSError:
+                    pass
+
+
 def gpio_export(pin: int) -> None:
-    if pin in _gpio_exported:
-        return
     gpio_path = Path(f"/sys/class/gpio/gpio{pin}")
-    if not gpio_path.exists():
+    if gpio_path.exists():
+        _gpio_exported.add(pin)
+        return
+    for attempt in range(5):
         try:
             _gpio_write("/sys/class/gpio/export", str(pin))
+            _gpio_exported.add(pin)
+            return
         except OSError:
-            if not gpio_path.exists():
-                raise
-    _gpio_exported.add(pin)
+            time.sleep(0.1)
+    if gpio_path.exists():
+        _gpio_exported.add(pin)
+        return
+    raise RuntimeError(f"Cannot export GPIO {pin} after 5 attempts")
 
 
 def gpio_set_direction(pin: int, direction: str) -> None:

@@ -62,14 +62,23 @@ def _gpio_write(path: str, value: str) -> None:
         f.write(value)
 
 
+def _gpio_write(path: str, value: str) -> None:
+    with open(path, "w") as f:
+        f.write(value)
+
+
 def _gpio_export(pin: int) -> None:
     gpio_path = Path(f"/sys/class/gpio/gpio{pin}")
-    if not gpio_path.exists():
+    if gpio_path.exists():
+        return
+    for attempt in range(5):
         try:
             _gpio_write("/sys/class/gpio/export", str(pin))
+            return
         except OSError:
-            if not gpio_path.exists():
-                raise
+            time.sleep(0.1)
+    if not gpio_path.exists():
+        raise RuntimeError(f"Cannot export GPIO {pin} after 5 attempts")
 
 
 def _gpio_unexport(pin: int) -> None:
