@@ -7,7 +7,7 @@
 # Prérequis (modules-load.d/gygeslink.conf) :
 #   dwc2, libcomposite, usb_f_ncm
 
-set -uo pipefail
+set -euo pipefail
 
 GADGET_DIR="/sys/kernel/config/usb_gadget/gygeslink"
 UDC=$(ls /sys/class/udc/ 2>/dev/null | head -1)

@@ -1,12 +1,5 @@
 #!/bin/bash
-# GygesLink — Script d'installation
-# Exécuté sur le Pi après le premier boot d'Armbian.
-# Configure le WiFi, déploie les fichiers, crée les utilisateurs, active les services.
-#
-# Modes :
-#   ./install.sh          — mode dev : configure WiFi + marque setup-done
-#   ./install.sh factory   — mode factory : pas de WiFi, pas de setup-done
-#                           (pour image à flasher — le portail setup s'activera au boot)
+# GygesLink - Script d'installation
 
 set -euo pipefail
 
@@ -85,9 +78,9 @@ fi
 LOG "Installation des paquets..."
 apt update && apt install -y \
     iptables conntrack dnsmasq isc-dhcp-client macchanger wpasupplicant \
-    tor obfs4proxy wireguard-tools python3-pip python3-libgpiod \
-    i2c-tools git python3-flask python3-flask-limiter python3-requests \
-    python3-aiohttp network-manager iw
+    tor obfs4proxy python3-pip python3-libgpiod \
+    i2c-tools git python3-flask python3-flask-limiter \
+    python3-aiohttp python3-requests network-manager iw gpg
 
 # ── Installer aiohttp-socks (absent des dépôts Debian) ───────────
 pip3 install --break-system-packages aiohttp-socks 2>/dev/null || true
@@ -108,6 +101,15 @@ cp -r "$REPO_DIR/src/data" / 2>/dev/null || true
 chmod +x /usr/local/bin/gygeslink-*.sh /usr/local/bin/gygeslink-*.py \
          /usr/local/bin/noise_generator.py 2>/dev/null || true
 
+# ── Clé publique GPG pour les mises à jour ────────────────────────
+mkdir -p /etc/gygeslink
+if [ -f "$REPO_DIR/src/etc/gygeslink/update-pubkey.gpg" ]; then
+    cp "$REPO_DIR/src/etc/gygeslink/update-pubkey.gpg" /etc/gygeslink/update-pubkey.gpg
+    LOG "Clé publique GPG (OTA) installée."
+else
+    LOG "ATTENTION : Clé publique GPG absente - les mises à jour OTA ne pourront pas être vérifiées."
+fi
+
 # ── Setup-done ──────────────────────────────────────────────────
 if [ "$MODE" = "dev" ]; then
     touch /data/gygeslink/setup-done
@@ -118,10 +120,7 @@ else
 fi
 
 # ── Module IFB pour le jitter (netem sur interface virtuelle) ──────
-if ! grep -q "^ifb" /etc/modules 2>/dev/null; then
-    echo "ifb" >> /etc/modules
-    LOG "Module ifb ajouté à /etc/modules."
-fi
+# Déjà inclus dans /etc/modules-load.d/gygeslink.conf (copié via cp src/etc/)
 modprobe ifb numifbs=1 2>/dev/null || true
 
 # ── NetworkManager ──────────────────────────────────────────────
@@ -141,17 +140,9 @@ systemctl enable gygeslink-iptables-open.service
 systemctl enable gygeslink-jitter.service
 systemctl enable gygeslink-noise.service
 systemctl enable gygeslink-api.service
-systemctl enable gygeslink-wireguard.service
 systemctl enable gygeslink-led.service
 systemctl enable gygeslink-button.service
-
-# ── Symlink WireGuard ────────────────────────────────────────────
-# wg-quick cherche /etc/wireguard/wg0.conf — le fichier réel est sur
-# la partition persistante /data. Le symlink permet à wg-quick de
-# le trouver sans copier la clé privée sur le rootfs.
-mkdir -p /etc/wireguard
-ln -sf /data/gygeslink/wg0.conf /etc/wireguard/wg0.conf
-LOG "Symlink WireGuard créé : /etc/wireguard/wg0.conf → /data/gygeslink/wg0.conf"
+systemctl enable gygeslink-timesync.service
 
 # ── Nettoyer les anciens fichiers NM WiFi si présents ───────────
 rm -f /etc/NetworkManager/system-connections/GygesLink-WiFi.nmconnection 2>/dev/null || true
@@ -159,9 +150,8 @@ rm -f /etc/NetworkManager/system-connections/GygesLink-WiFi.nmconnection 2>/dev/
 LOG "============================================"
 LOG "Installation terminée."
 LOG "Le Pi va s'éteindre."
-LOG "Débranchez et rebranchez le câble USB-C sur votre PC."
 LOG "Le portail setup s'ouvrira automatiquement."
 LOG "============================================"
 
 sleep 5
-poweroff
+reboot

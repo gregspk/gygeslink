@@ -89,27 +89,4 @@ COMMIT
 # Tor daemon (continue de tourner pour reprise rapide)
 -A OUTPUT -m owner --uid-owner debian-tor -j ACCEPT
 
-# WireGuard → endpoint Mullvad
--A OUTPUT -o wlan0 -p udp --dport 51820 -j ACCEPT
-
-# ═══════════════════════════════════════════════════════════════════
-# PRODUCTION : supprimer toutes les règles ci-dessous avant déploiement
-# ═══════════════════════════════════════════════════════════════════
-
-# SSH entrant sur wlan0 (debug uniquement — RETIRER EN PRODUCTION)
--A INPUT -i wlan0 -p tcp --dport 22 -j ACCEPT
--A OUTPUT -o wlan0 -p tcp --sport 22 -j ACCEPT
-
-# HTTPS sortant sur wlan0 (debug uniquement — RETIRER EN PRODUCTION)
--A OUTPUT -o wlan0 -p tcp --dport 443 -j ACCEPT
--A INPUT -i wlan0 -p tcp --sport 443 -j ACCEPT
-
-# HTTP sortant sur wlan0 (debug uniquement — RETIRER EN PRODUCTION)
--A OUTPUT -o wlan0 -p tcp --dport 80 -j ACCEPT
--A INPUT -i wlan0 -p tcp --sport 80 -j ACCEPT
-
-# DNS sortant (debug uniquement — RETIRER EN PRODUCTION)
--A OUTPUT -o wlan0 -p udp --dport 53 -j ACCEPT
--A INPUT -i wlan0 -p udp --sport 53 -j ACCEPT
-
 COMMIT

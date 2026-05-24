@@ -7,7 +7,7 @@
 #   - usb0/usb1 : configuré ici (USB gadget NCM, côté PC)
 #   - iptables : fail-close appliqué ici AVANT que Tor ne démarre
 
-set -uo pipefail
+set -euo pipefail
 
 LOG() { echo "[gygeslink-network] $*"; }
 ERR() { echo "[gygeslink-network] ERREUR: $*" >&2; }

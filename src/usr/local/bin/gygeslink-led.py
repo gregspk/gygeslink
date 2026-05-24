@@ -7,8 +7,8 @@ Indique l'état de protection du boîtier en temps réel via une LED RGB.
 Câblage GPIO (Orange Pi Zero 2W — Allwinner H618, header 26-pin) :
   LED RGB ANODE COMMUNE (la longue broche va au 3.3V, pas au GND) :
     Pin 1  (3.3V)  → Anode commune LED
-    Pin 11 (PH2)   → R 82Ω → Cathode rouge   (GPIO 226)
-    Pin 13 (PH3)   → R 22Ω → Cathode vert    (GPIO 227)
+    Pin 8  (PH2)   → R 82Ω → Cathode rouge   (GPIO 226)
+    Pin 10 (PH3)   → R 22Ω → Cathode vert    (GPIO 227)
     Pin 15 (PI5)   → R 22Ω → Cathode bleu    (GPIO 261)
   LOGIQUE INVERSÉE : GPIO LOW = LED ON, GPIO HIGH = LED OFF
 
@@ -24,7 +24,6 @@ avec tous les kernels, sans dépendance à une version de libgpiod.
   Blanc clignotant rapide (0.3s ON / 0.3s OFF) → Mode setup (premier boot) ou démarrage
   Bleu fixe                              → Fonctionnement normal, protection complète
   Orange fixe                            → Mode pause (trafic non anonymisé)
-  Orange clignotant lent (1s ON / 2s OFF) → Voucher Mullvad expire < 7j
   Rouge clignotant rapide (0.5s ON / 0.5s OFF) → Erreur critique, trafic BLOQUÉ
 """
 
@@ -32,12 +31,9 @@ import logging
 import os
 import sys
 import time
-from datetime import datetime, timezone
 from pathlib import Path
 
 SETUP_DONE_FILE  = Path("/data/gygeslink/setup-done")
-WG_CONF_FILE     = Path("/data/gygeslink/wg0.conf")
-WG_EXPIRY_FILE   = Path("/data/gygeslink/wg-expiry.txt")
 PAUSED_FILE      = Path("/data/gygeslink/paused")
 
 GPIO_R = 226
@@ -48,7 +44,6 @@ LED_ACTIVE_LOW = True
 
 GPIO_CONF_FILE = Path("/data/gygeslink/gpio.conf")
 
-EXPIRY_WARNING_DAYS = 7
 CHECK_INTERVAL = 5.0
 
 logging.basicConfig(
@@ -176,21 +171,6 @@ def service_active(name: str) -> bool:
     return result.returncode == 0
 
 
-def voucher_expiring_soon() -> bool:
-    if not WG_EXPIRY_FILE.exists():
-        return False
-    try:
-        expiry_str = WG_EXPIRY_FILE.read_text().strip()
-        expiry = datetime.fromisoformat(expiry_str)
-        if expiry.tzinfo is None:
-            expiry = expiry.replace(tzinfo=timezone.utc)
-        delta = expiry - datetime.now(timezone.utc)
-        return 0 < delta.days < EXPIRY_WARNING_DAYS
-    except (ValueError, OSError) as e:
-        logger.debug("Impossible de lire wg-expiry.txt : %s", e)
-        return False
-
-
 def get_system_state() -> str:
     if not SETUP_DONE_FILE.exists():
         return "setup"
@@ -205,14 +185,8 @@ def get_system_state() -> str:
     noise_ok  = service_active("gygeslink-noise")
     jitter_ok = service_active("gygeslink-jitter")
 
-    wg_expected = WG_CONF_FILE.exists()
-    wg_ok = service_active("gygeslink-wireguard") if wg_expected else True
-
-    if not noise_ok or not jitter_ok or not wg_ok:
+    if not noise_ok or not jitter_ok:
         return "partial"
-
-    if wg_expected and voucher_expiring_soon():
-        return "expiring"
 
     return "ok"
 
@@ -233,13 +207,6 @@ def blink_error() -> None:
 
 def show_partial() -> None:
     set_color(True, True, False)
-    time.sleep(2.0)
-
-
-def blink_expiring() -> None:
-    set_color(True, True, False)
-    time.sleep(1.0)
-    led_off()
     time.sleep(2.0)
 
 
@@ -279,8 +246,6 @@ def led_loop() -> None:
             blink_error()
         elif current_state == "partial":
             show_partial()
-        elif current_state == "expiring":
-            blink_expiring()
         else:
             show_ok()
 

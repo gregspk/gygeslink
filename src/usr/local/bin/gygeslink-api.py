@@ -25,7 +25,6 @@ import socket
 import subprocess
 import threading
 import time
-from datetime import datetime, timezone
 from pathlib import Path
 
 from flask import Flask, request, jsonify, Response, stream_with_context
@@ -36,12 +35,16 @@ NETPLAN_WIFI_FILE = Path("/etc/netplan/30-wifis-dhcp.yaml")
 
 DATA_DIR         = Path("/data/gygeslink")
 SETUP_DONE_FILE  = DATA_DIR / "setup-done"
-WG_CONF_FILE     = DATA_DIR / "wg0.conf"
-WG_EXPIRY_FILE   = DATA_DIR / "wg-expiry.txt"
 WIFI_CONF_FILE   = DATA_DIR / "wifi.conf"
 BRIDGES_CONF_FILE = DATA_DIR / "bridges.conf"
 BRIDGES_CONF_PERM = 0o644
 PAUSED_FILE       = DATA_DIR / "paused"
+
+VERSION_FILE      = DATA_DIR / "version.txt"
+DOWNLOAD_DIR      = DATA_DIR / "updates"
+STATUS_FILE       = DATA_DIR / "update-status.json"
+UPDATE_PUBKEY     = Path("/etc/gygeslink/update-pubkey.gpg")
+GITHUB_REPO       = "gregspk/gygeslink"
 
 API_HOST = "192.168.100.1"
 API_PORT = 4430
@@ -81,21 +84,24 @@ _status_cache = {}
 _status_lock = threading.Lock()
 
 
+_update_available = False
+_update_version = ""
+
+
 def _collect_status() -> dict:
     return {
         "tor_bootstrap": _get_tor_bootstrap(),
-        "tier": _get_tier(),
-        "wireguard_active": _is_wireguard_active(),
         "wifi_connected": _is_wifi_connected(),
         "wifi_ssid": _get_wifi_ssid(),
         "bridges_count": _count_bridges(),
         "noise_active": _is_noise_active(),
         "jitter_active": _is_jitter_active(),
         "led_color": _get_led_color(),
-        "wg_expiry": _get_wg_expiry(),
         "uptime_seconds": _get_uptime(),
         "setup_done": SETUP_DONE_FILE.exists(),
         "paused": PAUSED_FILE.exists(),
+        "pi_update_available": _update_available,
+        "pi_update_version": _update_version,
     }
 
 
@@ -251,14 +257,6 @@ def _count_bridges() -> int:
     return count
 
 
-def _is_wireguard_active() -> bool:
-    result = subprocess.run(
-        ["ip", "addr", "show", "wg0"],
-        capture_output=True, text=True,
-    )
-    return result.returncode == 0 and "inet " in result.stdout
-
-
 def _is_wifi_connected() -> bool:
     result = subprocess.run(
         ["iw", "dev", "wlan0", "link"],
@@ -287,12 +285,6 @@ def _get_wifi_ssid() -> str:
     return ""
 
 
-def _get_tier() -> int:
-    if WG_CONF_FILE.exists():
-        return 2
-    return 1
-
-
 def _get_led_color() -> str:
     if PAUSED_FILE.exists():
         return "pause"
@@ -300,24 +292,11 @@ def _get_led_color() -> str:
         return "blue_blink"
     with _status_lock:
         bootstrap = _status_cache.get("tor_bootstrap", 0)
-        tier = _status_cache.get("tier", 1)
-        wg_active = _status_cache.get("wireguard_active", False)
     if bootstrap < 100:
         return "red_blink"
-    if tier == 2 and not wg_active:
-        return "orange"
     if bootstrap >= 100:
-        return "green"
+        return "blue"
     return "orange"
-
-
-def _get_wg_expiry() -> str:
-    if not WG_EXPIRY_FILE.exists():
-        return ""
-    try:
-        return WG_EXPIRY_FILE.read_text().strip()
-    except Exception:
-        return ""
 
 
 def _is_noise_active() -> bool:
@@ -406,13 +385,9 @@ def api_status_stream():
 
 @app.route("/api/config", methods=["GET"])
 def api_config():
-    tier = _get_tier()
     config = {
         "ssid": _get_wifi_ssid(),
-        "tier": tier,
         "bridges_count": _count_bridges(),
-        "wireguard": _is_wireguard_active(),
-        "wg_expiry": _get_wg_expiry() if tier == 2 else "",
     }
     return jsonify(config)
 
@@ -578,91 +553,15 @@ def api_bridges():
 def api_setup():
     data = request.get_json(silent=True) or {}
     tier = str(data.get("tier", "1"))
-    account = data.get("account") or ""
-    if isinstance(account, str):
-        account = account.strip()
-    else:
-        account = ""
 
-    if tier == "1":
-        DATA_DIR.mkdir(parents=True, exist_ok=True)
-        SETUP_DONE_FILE.touch()
-        logger.info("Setup Classic (Tier 1) via API.")
-        subprocess.Popen(["bash", "-c", "sleep 3 && systemctl reboot"])
-        return _json_ok(message="Mode Classic configuré. Redémarrage en cours…")
+    if tier != "1":
+        return _json_error("invalid_tier", "Tier 1 uniquement.")
 
-    if tier == "2":
-        if not re.match(r"^\d{16}$", account):
-            return _json_error("invalid_account", "Le numéro de compte Mullvad doit contenir exactement 16 chiffres.")
-
-        try:
-            private_key, public_key = _generate_wg_keys()
-            import requests as req
-            api_data = _register_wg_key(req, account, public_key)
-            wg_config, expiry = _build_wg_config(private_key, api_data)
-
-            DATA_DIR.mkdir(parents=True, exist_ok=True)
-            WG_CONF_FILE.write_text(wg_config)
-            WG_CONF_FILE.chmod(0o600)
-            WG_EXPIRY_FILE.write_text(expiry.isoformat())
-
-            SETUP_DONE_FILE.touch()
-            logger.info("Setup Advanced (Tier 2) via API. Expiry: %s", expiry.isoformat())
-            subprocess.Popen(["bash", "-c", "sleep 3 && systemctl reboot"])
-            return _json_ok(message="Mode Advanced configuré.", wg_expiry=expiry.isoformat())
-
-        except ValueError as e:
-            return _json_error("setup_error", str(e))
-        except Exception as e:
-            return _json_error("setup_error", f"Erreur lors de la configuration : {e}")
-
-    return _json_error("invalid_tier", "Tier invalide (1 ou 2).")
-
-
-def _generate_wg_keys() -> tuple:
-    priv = subprocess.run(["wg", "genkey"], capture_output=True, text=True, check=True)
-    private_key = priv.stdout.strip()
-    pub = subprocess.run(["wg", "pubkey"], input=private_key, capture_output=True, text=True, check=True)
-    return private_key, pub.stdout.strip()
-
-
-def _register_wg_key(req_lib, account: str, public_key: str) -> dict:
-    url = "https://api.mullvad.net/wg/"
-    resp = req_lib.post(url, data={"account": account, "pubkey": public_key}, timeout=30, verify=True)
-    if resp.status_code == 400:
-        raise ValueError("Compte Mullvad invalide ou expiré.")
-    if resp.status_code == 401:
-        raise ValueError("Authentification API Mullvad refusée.")
-    if resp.status_code == 429:
-        raise ValueError("Trop de clés enregistrées.")
-    if resp.status_code != 200:
-        raise RuntimeError(f"Erreur API Mullvad (HTTP {resp.status_code})")
-    return resp.json()
-
-
-def _build_wg_config(private_key: str, api_data: dict) -> tuple:
-    try:
-        server_pubkey = api_data["peers"][0]["public_key"]
-    except (KeyError, IndexError, TypeError):
-        server_pubkey = api_data.get("server", {}).get("public_key", "")
-    if not server_pubkey:
-        raise ValueError("Clé publique serveur Mullvad absente.")
-    server_ip = api_data.get("server", {}).get("ipv4_addr_in", "")
-    assigned_ip = api_data.get("ip", "")
-    expiry_str = api_data.get("expiry", "")
-
-    config = f"[Interface]\nPrivateKey = {private_key}\nAddress = {assigned_ip}/32\nDNS = 193.138.218.74\n\n[Peer]\nPublicKey = {server_pubkey}\nAllowedIPs = 0.0.0.0/0\nEndpoint = {server_ip}:51820\nPersistentKeepalive = 25\n"
-
-    from datetime import timedelta
-    if expiry_str:
-        try:
-            expiry = datetime.fromisoformat(expiry_str)
-        except ValueError:
-            expiry = datetime.now(timezone.utc) + timedelta(days=30)
-    else:
-        expiry = datetime.now(timezone.utc) + timedelta(days=30)
-
-    return config, expiry
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    SETUP_DONE_FILE.touch()
+    logger.info("Setup Classic (Tier 1) via API.")
+    subprocess.Popen(["bash", "-c", "sleep 3 && systemctl reboot"])
+    return _json_ok(message="Mode Classic configuré. Redémarrage en cours…")
 
 
 @app.route("/api/pause", methods=["POST"])
@@ -729,8 +628,6 @@ def api_factory_reset():
     files_to_delete = [
         SETUP_DONE_FILE,
         WIFI_CONF_FILE,
-        WG_CONF_FILE,
-        WG_EXPIRY_FILE,
         PAUSED_FILE,
         NETPLAN_WIFI_FILE,
     ]
@@ -789,6 +686,182 @@ def api_reboot():
 @limiter.exempt
 def api_health():
     return jsonify({"status": "ok"})
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Mise à jour OTA
+# ─────────────────────────────────────────────────────────────────────
+
+def _get_current_version() -> str:
+    try:
+        return VERSION_FILE.read_text().strip()
+    except Exception:
+        return "0.0.0"
+
+
+def _check_github_release() -> dict:
+    import requests as req
+    url = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
+    try:
+        resp = req.get(url, timeout=15)
+        resp.raise_for_status()
+        data = resp.json()
+        latest = data.get("tag_name", "").lstrip("v")
+        changelog = data.get("body", "")
+        assets = data.get("assets", [])
+        download_url = ""
+        checksums_url = ""
+        checksums_sig_url = ""
+        for asset in assets:
+            name = asset.get("name", "")
+            if name.endswith(".tar.gz"):
+                download_url = asset.get("browser_download_url", "")
+            elif name == "SHA256SUMS":
+                checksums_url = asset.get("browser_download_url", "")
+            elif name == "SHA256SUMS.sig":
+                checksums_sig_url = asset.get("browser_download_url", "")
+        current = _get_current_version()
+        available = latest > current
+        return {
+            "available": available,
+            "current": current,
+            "version": latest,
+            "changelog": changelog,
+            "download_url": download_url,
+            "checksums_url": checksums_url,
+            "checksums_sig_url": checksums_sig_url,
+        }
+    except Exception as e:
+        logger.error("Update check failed: %s", e)
+        return {"available": False, "error": str(e)}
+
+
+@app.route("/api/update/check", methods=["GET"])
+@limiter.limit("2 per minute")
+def api_update_check():
+    global _update_available, _update_version
+    import requests as req
+    info = _check_github_release()
+    if "error" in info:
+        return _json_error("check_error", info["error"], 500)
+    _update_available = info["available"]
+    _update_version = info.get("version", "")
+    return jsonify({
+        "available": info["available"],
+        "current": info.get("current", _get_current_version()),
+        "version": _update_version,
+        "changelog": info.get("changelog", ""),
+    })
+
+
+@app.route("/api/update/apply", methods=["POST"])
+@limiter.limit("1 per hour")
+def api_update_apply():
+    info = _check_github_release()
+    if not info.get("available"):
+        return _json_error("no_update", "Aucune mise à jour disponible.")
+
+    download_url = info.get("download_url", "")
+    checksums_url = info.get("checksums_url", "")
+    checksums_sig_url = info.get("checksums_sig_url", "")
+    version = info.get("version", "unknown")
+
+    if not download_url:
+        return _json_error("no_asset", "Archive introuvable sur GitHub.")
+
+    DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+    _write_update_status("downloading", 10, version, "Téléchargement en cours...")
+
+    try:
+        archive_name = download_url.split("/")[-1]
+        archive_path = DOWNLOAD_DIR / archive_name
+
+        logger.info("Téléchargement de %s via Tor...", archive_name)
+        result = subprocess.run(
+            [
+                "curl", "--socks5-hostname", "127.0.0.1:9050",
+                "-L", "-o", str(archive_path),
+                "-s", "--show-error",
+                download_url,
+            ],
+            capture_output=True, text=True, timeout=300,
+        )
+        if result.returncode != 0:
+            _write_update_status("error", 0, "", f"curl failed: {result.stderr[:200]}")
+            return _json_error("download_error", f"Téléchargement échoué : {result.stderr[:200]}", 500)
+
+        if checksums_url:
+            checksums_path = DOWNLOAD_DIR / "SHA256SUMS"
+            r_cs = subprocess.run(
+                [
+                    "curl", "--socks5-hostname", "127.0.0.1:9050",
+                    "-L", "-s", "--show-error",
+                    "-o", str(checksums_path),
+                    checksums_url,
+                ],
+                capture_output=True, text=True, timeout=60,
+            )
+            if r_cs.returncode != 0:
+                logger.error("Failed to download SHA256SUMS via Tor: %s", r_cs.stderr[:200])
+
+        if checksums_sig_url:
+            sig_path = DOWNLOAD_DIR / "SHA256SUMS.sig"
+            r_sig = subprocess.run(
+                [
+                    "curl", "--socks5-hostname", "127.0.0.1:9050",
+                    "-L", "-s", "--show-error",
+                    "-o", str(sig_path),
+                    checksums_sig_url,
+                ],
+                capture_output=True, text=True, timeout=60,
+            )
+            if r_sig.returncode != 0:
+                logger.error("Failed to download SHA256SUMS.sig via Tor: %s", r_sig.stderr[:200])
+
+        _write_update_status("verifying", 40, version, "Vérification de la signature...")
+
+        if not UPDATE_PUBKEY.exists():
+            _write_update_status("error", 0, version, "Clé publique GPG introuvable")
+            return _json_error("no_pubkey", "Clé publique GPG introuvable sur le boîtier.", 500)
+
+        logger.info("Lancement de la mise à jour v%s...", version)
+        _write_update_status("installing", 60, version, "Installation...")
+
+        subprocess.Popen(
+            [
+                "/usr/local/bin/gygeslink-update.sh",
+                str(archive_path),
+                version,
+            ],
+            start_new_session=True,
+        )
+
+        return _json_ok(message=f"Mise à jour v{version} en cours. Le boîtier va redémarrer.")
+
+    except Exception as e:
+        logger.error("Update apply error: %s", e)
+        _write_update_status("error", 0, "", str(e))
+        return _json_error("update_error", f"Erreur lors de la mise à jour : {e}", 500)
+
+
+@app.route("/api/update/status", methods=["GET"])
+@limiter.exempt
+def api_update_status():
+    try:
+        data = json.loads(STATUS_FILE.read_text())
+        return jsonify(data)
+    except Exception:
+        return jsonify({"status": "idle", "progress": 0, "version": "", "message": ""})
+
+
+def _write_update_status(status: str, progress: int, version: str = "", message: str = ""):
+    STATUS_FILE.write_text(json.dumps({
+        "status": status,
+        "progress": progress,
+        "version": version,
+        "message": message,
+    }))
 
 
 if __name__ == "__main__":

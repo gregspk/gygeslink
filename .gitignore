@@ -1,10 +1,44 @@
+# Build artifacts
+*.tar.gz
+SHA256SUMS
+SHA256SUMS.sig
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Temp files
 *.tmp.*
-.claude/
+
+# Secrets
+*.asc
+*.rev
+private-key*
+
+# GPG: exclude *.gpg but track the OTA public key
+*.gpg
+!src/etc/gygeslink/update-pubkey.gpg
+
+# Internal / AI / tool files
 CLAUDE.md
-CORRECTIONS_PLAN.md
 MEMORY.md
-.gitattributes
-docs/
-corrections-*.txt
-file_list.txt
+CORRECTIONS_PLAN.md
+corrections-audit-*.txt
 DESKTOP-APP-PLAN
+SETUP.md
+DEPLOY.md
+.claude/
+.opencode/
+docs/superpowers/
+file_list.txt

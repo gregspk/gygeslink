@@ -2,15 +2,12 @@
 Description=GygesLink — Tor + obfs4 (anonymisation transparente)
 # Tor démarre après :
 #   - iptables-drop (trafic bloqué pendant le démarrage de Tor)
-#   - wireguard (tier status connu → torrc configuré correctement)
 After=gygeslink-network-setup.service
-After=gygeslink-wireguard.service
 Wants=gygeslink-network-setup.service
-Wants=gygeslink-wireguard.service
 
 # Note : bridges.conf est optionnel — le script gygeslink-tor-prestart.sh
-# active ou désactive UseBridges selon le tier et la présence des bridges.
-# Tor peut démarrer sans bridges (Tier 1 direct, sans obfs4).
+# active ou désactive UseBridges selon la présence de bridges obfs4 valides.
+# Tor peut démarrer sans bridges (direct, sans obfs4).
 
 [Service]
 # simple : Tor est lancé avec --nohup pour rester en avant-plan.
@@ -23,8 +20,7 @@ Type=simple
 User=debian-tor
 Group=debian-tor
 
-# Configurer OutboundBindInterface selon le tier (Tier 1 ou Tier 2)
-# avant de lancer Tor. Ce script lit /run/gygeslink-tier.status.
+# Configurer torrc avant de lancer Tor (bridges obfs4, nettoyage directives).
 # Préfixe + : ExecStartPre tourne en root (nécessaire pour sed -i sur torrc).
 ExecStartPre=+/usr/local/bin/gygeslink-tor-prestart.sh
 

@@ -30,7 +30,7 @@ ExecStartPre=/bin/sh -c 'iptables -C OUTPUT -o usb0 -p tcp --sport 443 -j ACCEPT
 # ── Processus principal : portail Flask ──────────────────────────────
 # Flask écoute sur 192.168.100.1:443 (HTTPS, certificat auto-signé).
 # Accessible depuis le PC branché en USB-C — pas besoin de WiFi.
-# Gère le premier boot : choix Classic/Advanced, config WiFi, WireGuard, reboot.
+# Gère le premier boot : config WiFi, bridges obfs4, reboot.
 ExecStart=/usr/bin/python3 /usr/local/bin/gygeslink-setup-portal.py
 
 # ── Nettoyage à l'arrêt ───────────────────────────────────────────────

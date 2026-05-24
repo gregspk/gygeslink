@@ -9,9 +9,7 @@
 #   [DNS] → usb0 → iptables REDIRECT → DNSPort (5353) → réseau Tor
 #   [noise daemon] → SocksPort (9050) → réseau Tor
 #
-# Ce fichier est STATIQUE. Deux directives sont gérées dynamiquement :
-#   - "OutboundBindInterface wg0" : ajoutée/retirée par gygeslink-tor-prestart.sh
-#     selon que WireGuard est monté (Tier 2) ou non (Tier 1).
+# Ce fichier est STATIQUE. Une directive est gérée dynamiquement :
 #   - Les bridges : chargés depuis /data/gygeslink/bridges.conf
 #     (partition persistante, survive aux mises à jour OS).
 #
@@ -96,13 +94,3 @@ VirtualAddrNetworkIPv4 10.192.0.0/10
 # Tor refuse de démarrer seulement si UseBridges=1 et qu'aucune ligne
 # 'Bridge' n'est présente. Le prestart script gère cela dynamiquement.
 %include /data/gygeslink/bridges.conf
-
-# ── OutboundBindInterface (géré dynamiquement) ────────────────────────
-# Cette directive N'EST PAS présente ici statiquement.
-# Elle est ajoutée/retirée au démarrage par gygeslink-tor-prestart.sh :
-#
-#   TIER=2 → "OutboundBindInterface wg0" ajouté  → Tor sort via Mullvad
-#   TIER=1 → "OutboundBindInterface wg0" retiré  → Tor sort via wlan0
-#
-# overlayfs étant actif en production, ces modifications sont
-# volatiles (réinitialisées à chaque reboot → re-détection propre).

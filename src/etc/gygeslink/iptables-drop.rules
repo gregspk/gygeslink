@@ -40,10 +40,9 @@
 -A INPUT -i wlan0 -p udp --sport 67 --dport 68 -j ACCEPT
 -A OUTPUT -o wlan0 -p udp --sport 68 --dport 67 -j ACCEPT
 
-# DNS sortant (nécessaire avant que Tor ne soit actif)
-# Sans cette règle, git pull, apt, etc. échouent en fail-close car
-# resolv.conf pointe vers 127.0.0.1 (Tor DNS) qui n'écoute pas encore.
-# RETIRER EN PRODUCTION : Tor gère le DNS une fois actif.
+# DNS sortant sur wlan0 (nécessaire en fail-close pour le bootstrap Tor)
+# Permet la résolution DNS avant que Tor ne soit actif.
+# Tor utilise le DNS pour résoudre les bridges/relais au bootstrap.
 -A OUTPUT -o wlan0 -p udp --dport 53 -j ACCEPT
 -A INPUT -i wlan0 -p udp --sport 53 -j ACCEPT
 
@@ -53,28 +52,6 @@
 # Tor daemon → relais/bridges (nécessaire pour le bootstrap AVANT iptables-open)
 # Sans cette règle, Tor ne peut pas bootstrap en fail-close et time out.
 -A OUTPUT -m owner --uid-owner debian-tor -j ACCEPT
-
-# WireGuard → endpoint Mullvad (Tier 2)
-# Nécessaire dès la phase de boot pour que wg-quick up puisse compléter
-# le handshake avant le démarrage de Tor.
--A OUTPUT -o wlan0 -p udp --dport 51820 -j ACCEPT
-
-# ═══════════════════════════════════════════════════════════════════
-# PRODUCTION : supprimer toutes les règles ci-dessous avant déploiement
-# ═══════════════════════════════════════════════════════════════════
-
-# SSH entrant sur wlan0 (debug uniquement — RETIRER EN PRODUCTION)
--A INPUT -i wlan0 -p tcp --dport 22 -j ACCEPT
--A OUTPUT -o wlan0 -p tcp --sport 22 -j ACCEPT
-
-# HTTPS sortant sur wlan0 (debug uniquement — RETIRER EN PRODUCTION)
-# Nécessaire pour git pull, apt update, curl pendant le développement.
--A OUTPUT -o wlan0 -p tcp --dport 443 -j ACCEPT
--A INPUT -i wlan0 -p tcp --sport 443 -j ACCEPT
-
-# HTTP sortant sur wlan0 (debug uniquement — RETIRER EN PRODUCTION)
--A OUTPUT -o wlan0 -p tcp --dport 80 -j ACCEPT
--A INPUT -i wlan0 -p tcp --sport 80 -j ACCEPT
 
 COMMIT
 

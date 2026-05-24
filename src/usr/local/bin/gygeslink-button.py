@@ -21,7 +21,6 @@ import sys
 import time
 from pathlib import Path
 
-GPIOCHIP    = "/dev/gpiochip1"
 BUTTON_LINE = 269
 
 GPIO_CONF_FILE  = Path("/data/gygeslink/gpio.conf")
@@ -118,9 +117,13 @@ def trigger_factory_reset() -> None:
         SETUP_DONE_FILE,
         WIFI_CONF_FILE,
         Path("/etc/netplan/30-wifis-dhcp.yaml"),
-        Path("/data/gygeslink/wg0.conf"),
-        Path("/data/gygeslink/wg-expiry.txt"),
         Path("/data/gygeslink/paused"),
+        Path("/data/gygeslink/version.txt"),
+        Path("/data/gygeslink/update-status.json"),
+    ]
+
+    dirs_to_delete = [
+        Path("/data/gygeslink/updates"),
     ]
 
     for f in files_to_delete:
@@ -131,13 +134,19 @@ def trigger_factory_reset() -> None:
             except OSError as e:
                 logger.error("Impossible de supprimer %s : %s", f, e)
 
+    for d in dirs_to_delete:
+        if d.exists():
+            try:
+                import shutil
+                shutil.rmtree(d)
+                logger.info("%s supprimé.", d)
+            except OSError as e:
+                logger.error("Impossible de supprimer %s : %s", d, e)
+
     bridges = Path("/data/gygeslink/bridges.conf")
     bridges.write_text("# GygesLink — Bridges obfs4\n")
     bridges.chmod(0o644)
     logger.info("bridges.conf réinitialisé (vide).")
-
-    subprocess.run(["wg-quick", "down", "wg0"], check=False,
-                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     logger.info("Reboot dans 1 seconde...")
     time.sleep(1)

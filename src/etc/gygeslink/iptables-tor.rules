@@ -47,7 +47,7 @@ COMMIT
 :POSTROUTING ACCEPT [0:0]
 
 # MSS Clamping : ajuste la taille maximale des segments TCP
-# Nécessaire car Tor + obfs4 (+ WireGuard en Tier 2) ajoutent des en-têtes
+# Nécessaire car Tor + obfs4 ajoutent des en-têtes
 # qui réduisent le MTU effectif. Sans ce réglage : timeouts silencieux.
 # Appliqué en FORWARD (trafic transitant pour le PC) ET en OUTPUT
 # (trafic généré localement par Tor/obfs4proxy) pour couvrir tous les cas.
@@ -91,33 +91,8 @@ COMMIT
 # NTP sortant (si DS3231 indisponible) — aligné sur iptables-drop.rules
 -A OUTPUT -o wlan0 -p udp --dport 123 -j ACCEPT
 
-# WireGuard → endpoint Mullvad (port 51820 fixé dans le template wg0.conf)
-# Les paquets chiffrés wg0→wlan0 sont injectés par le kernel
--A OUTPUT -o wlan0 -p udp --dport 51820 -j ACCEPT
-
-# Tor daemon → bridges/relays (wlan0 en Tier 1, wg0 en Tier 2)
+# Tor daemon → bridges/relays via wlan0
 -A OUTPUT -m owner --uid-owner debian-tor -j ACCEPT
-
-# ═══════════════════════════════════════════════════════════════════
-# PRODUCTION : supprimer toutes les règles ci-dessous avant déploiement
-# ═══════════════════════════════════════════════════════════════════
-
-# SSH entrant sur wlan0 (debug uniquement — RETIRER EN PRODUCTION)
--A INPUT -i wlan0 -p tcp --dport 22 -j ACCEPT
--A OUTPUT -o wlan0 -p tcp --sport 22 -j ACCEPT
-
-# HTTPS sortant sur wlan0 (debug uniquement — RETIRER EN PRODUCTION)
--A OUTPUT -o wlan0 -p tcp --dport 443 -j ACCEPT
--A INPUT -i wlan0 -p tcp --sport 443 -j ACCEPT
-
-# HTTP sortant sur wlan0 (debug uniquement — RETIRER EN PRODUCTION)
--A OUTPUT -o wlan0 -p tcp --dport 80 -j ACCEPT
--A INPUT -i wlan0 -p tcp --sport 80 -j ACCEPT
-
-# DNS sortant (debug uniquement — RETIRER EN PRODUCTION)
-# Nécessaire si Tor plante et qu'on doit debug (apt, git, etc.)
--A OUTPUT -o wlan0 -p udp --dport 53 -j ACCEPT
--A INPUT -i wlan0 -p udp --sport 53 -j ACCEPT
 
 # TransPort Tor : accepter le trafic TCP redirigé depuis usb0
 # (après PREROUTING REDIRECT, les paquets arrivent sur ce port)
