@@ -1,0 +1,17 @@
+[Unit]
+Description=GygesLink — USB Ethernet Gadget (configfs RNDIS)
+# Doit démarrer très tôt, avant le réseau et bien avant network-setup
+DefaultDependencies=no
+After=sys-kernel-config.mount
+Requires=sys-kernel-config.mount
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/gygeslink-usb-gadget.sh
+# Le gadget reste configuré même après l'arrêt du service
+# (l'interface usb0 persiste jusqu'au reboot)
+ExecStop=/bin/sh -c 'GADGET_DIR="/sys/kernel/config/usb_gadget/gygeslink"; [ -d "$GADGET_DIR" ] && echo "" > "$GADGET_DIR/UDC" 2>/dev/null; true'
+
+[Install]
+WantedBy=sysinit.target

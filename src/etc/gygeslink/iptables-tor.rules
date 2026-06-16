@@ -1,0 +1,116 @@
+# GygesLink — règles iptables actives (Tor opérationnel)
+# Remplacent les règles drop une fois que Tor a bootstrappé à 100%.
+# Si Tor s'arrête, gygeslink-iptables-open.service restaure les règles drop.
+
+# ─────────────────────────────────────────────────────────────────────
+# TABLE NAT — redirection transparente vers Tor
+# ─────────────────────────────────────────────────────────────────────
+*nat
+:PREROUTING ACCEPT [0:0]
+:INPUT ACCEPT [0:0]
+:OUTPUT ACCEPT [0:0]
+:POSTROUTING ACCEPT [0:0]
+
+# Exclure le trafic Tor lui-même pour éviter la boucle infinie
+# (Tor se connecte aux bridges via wlan0 — ne pas rediriger vers lui-même)
+-A OUTPUT -m owner --uid-owner debian-tor -j RETURN
+
+# Rediriger les requêtes DNS du PC vers le DNSPort de Tor
+# Tor résout les DNS de façon anonyme — aucun DNS leak vers le FAI
+-A PREROUTING -i usb0 -p udp --dport 53 -j REDIRECT --to-ports 5353
+
+# Exempter le port de l'API desktop de la redirection TCP vers Tor
+# Destination 192.168.100.1 uniquement — sinon le trafic HTTPS du PC passe en clair
+-A PREROUTING -i usb0 -p tcp -d 192.168.100.1 --dport 4430 -j RETURN
+
+# Exempter SSH de la redirection TCP vers Tor (vers le Pi uniquement)
+-A PREROUTING -i usb0 -p tcp -d 192.168.100.1 --dport 22 -j RETURN
+
+# Exempter le setup portal HTTPS de la redirection TCP vers Tor (vers le Pi uniquement)
+-A PREROUTING -i usb0 -p tcp -d 192.168.100.1 --dport 443 -j RETURN
+
+# Rediriger tout le trafic TCP du PC vers le TransPort de Tor
+# Note : tous les paquets TCP, pas seulement SYN — pour les connexions
+# déjà établies au moment où les règles sont appliquées
+-A PREROUTING -i usb0 -p tcp -j REDIRECT --to-ports 9040
+
+COMMIT
+
+# ─────────────────────────────────────────────────────────────────────
+# TABLE MANGLE — ajustements des paquets
+# ─────────────────────────────────────────────────────────────────────
+*mangle
+:PREROUTING ACCEPT [0:0]
+:INPUT ACCEPT [0:0]
+:FORWARD ACCEPT [0:0]
+:OUTPUT ACCEPT [0:0]
+:POSTROUTING ACCEPT [0:0]
+
+# MSS Clamping : ajuste la taille maximale des segments TCP
+# Nécessaire car Tor + obfs4 ajoutent des en-têtes
+# qui réduisent le MTU effectif. Sans ce réglage : timeouts silencieux.
+# Appliqué en FORWARD (trafic transitant pour le PC) ET en OUTPUT
+# (trafic généré localement par Tor/obfs4proxy) pour couvrir tous les cas.
+-A FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
+-A OUTPUT  -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
+
+COMMIT
+
+# ─────────────────────────────────────────────────────────────────────
+# TABLE FILTER — politique de filtrage
+# ─────────────────────────────────────────────────────────────────────
+*filter
+:INPUT DROP [0:0]
+:FORWARD DROP [0:0]
+:OUTPUT DROP [0:0]
+
+# ─── Isolation du noise daemon ────────────────────────────────────────
+# DOIT être placé AVANT la règle ESTABLISHED,RELATED pour empêcher
+# qu'une connexion établie par le daemon ne soit autorisée via RELATED.
+# Seule la connexion au SocksPort de Tor (127.0.0.1:9050) est autorisée.
+-A OUTPUT -m owner --uid-owner gygeslink-noise -d 127.0.0.1 -p tcp --dport 9050 -j ACCEPT
+-A OUTPUT -m owner --uid-owner gygeslink-noise -j DROP
+
+# Loopback (communications internes — Tor utilise 127.0.0.1)
+-A INPUT -i lo -j ACCEPT
+-A OUTPUT -o lo -j ACCEPT
+
+# Connexions établies : autoriser le retour du trafic légitime
+# (réponses des bridges Tor, réponses Flask portail, etc.)
+-A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+-A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+
+# Serveur DHCP sur usb0 : le PC doit obtenir une IP
+-A INPUT -i usb0 -p udp --dport 67 -j ACCEPT
+-A OUTPUT -o usb0 -p udp --sport 67 -j ACCEPT
+
+# DHCP client → routeur FAI (renouvellement de bail wlan0)
+-A INPUT -i wlan0 -p udp --sport 67 --dport 68 -j ACCEPT
+-A OUTPUT -o wlan0 -p udp --sport 68 --dport 67 -j ACCEPT
+
+# NTP sortant (si DS3231 indisponible) — aligné sur iptables-drop.rules
+-A OUTPUT -o wlan0 -p udp --dport 123 -j ACCEPT
+
+# Tor daemon → bridges/relays via wlan0
+-A OUTPUT -m owner --uid-owner debian-tor -j ACCEPT
+
+# TransPort Tor : accepter le trafic TCP redirigé depuis usb0
+# (après PREROUTING REDIRECT, les paquets arrivent sur ce port)
+-A INPUT -i usb0 -p tcp --dport 9040 -j ACCEPT
+
+# DNSPort Tor : accepter le trafic DNS redirigé depuis usb0
+-A INPUT -i usb0 -p udp --dport 5353 -j ACCEPT
+
+# API REST pour l'app desktop (port 4430, usb0 uniquement)
+-A INPUT -i usb0 -p tcp --dport 4430 -j ACCEPT
+-A OUTPUT -o usb0 -p tcp --sport 4430 -j ACCEPT
+
+# SSH sur usb0 (accès depuis le PC branché en USB-C)
+-A INPUT -i usb0 -p tcp --dport 22 -j ACCEPT
+-A OUTPUT -o usb0 -p tcp --sport 22 -j ACCEPT
+
+# Setup portal HTTPS (port 443, usb0 uniquement)
+-A INPUT -i usb0 -p tcp --dport 443 -j ACCEPT
+-A OUTPUT -o usb0 -p tcp --sport 443 -j ACCEPT
+
+COMMIT

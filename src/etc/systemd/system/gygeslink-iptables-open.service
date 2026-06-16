@@ -1,0 +1,16 @@
+[Unit]
+Description=GygesLink — Ouverture iptables (Tor bootstrap 100%)
+After=gygeslink-tor.service
+Wants=gygeslink-tor.service
+# Ne pas compter ce service comme "en ligne" avant que Tor soit
+# réellement opérationnel (TransPort 9040 en écoute).
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+
+ExecStart=/usr/local/bin/gygeslink-iptables.sh open
+ExecStop=-/usr/local/bin/gygeslink-iptables.sh close
+
+[Install]
+WantedBy=multi-user.target

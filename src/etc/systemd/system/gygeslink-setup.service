@@ -1,0 +1,52 @@
+[Unit]
+Description=GygesLink Setup — Portail de configuration (premier boot)
+# Ne démarre QUE si le setup n'a pas encore été fait
+ConditionPathExists=!/data/gygeslink/setup-done
+
+# Démarre après la configuration réseau de base (usb0 prêt, iptables DROP actif)
+After=gygeslink-network-setup.service
+
+# Empêche Tor de démarrer pendant le setup (pas encore de WiFi configuré)
+Before=gygeslink-tor.service
+
+[Service]
+# simple : ExecStart est le processus principal (Flask portal, bloquant)
+Type=simple
+
+# ── Règles iptables pour le portail ──────────────────────────────────
+# Le script gygeslink-network-setup.sh a déjà ouvert temporairement le
+# port 443 sur usb0 (mode setup). On n'ajoute que les règles manquantes
+# pour éviter les doublons.
+
+# Redirige HTTP (80) → HTTPS (443) sur usb0 :
+# les navigateurs qui tentent http:// atterrissent quand même sur le portail.
+ExecStartPre=/bin/sh -c 'iptables -t nat -C PREROUTING -i usb0 -p tcp --dport 80 -j REDIRECT --to-port 443 2>/dev/null || iptables -t nat -A PREROUTING -i usb0 -p tcp --dport 80 -j REDIRECT --to-port 443'
+
+# S'assurer que INPUT/OUTPUT 443 sont ouverts (network-setup.sh les a déjà
+# peut-être ajoutés ; on vérifie d'abord pour éviter le doublon)
+ExecStartPre=/bin/sh -c 'iptables -C INPUT -i usb0 -p tcp --dport 443 -j ACCEPT 2>/dev/null || iptables -A INPUT -i usb0 -p tcp --dport 443 -j ACCEPT'
+ExecStartPre=/bin/sh -c 'iptables -C OUTPUT -o usb0 -p tcp --sport 443 -j ACCEPT 2>/dev/null || iptables -A OUTPUT -o usb0 -p tcp --sport 443 -j ACCEPT'
+
+# ── Processus principal : portail Flask ──────────────────────────────
+# Flask écoute sur 192.168.100.1:443 (HTTPS, certificat auto-signé).
+# Accessible depuis le PC branché en USB-C — pas besoin de WiFi.
+# Gère le premier boot : config WiFi, bridges obfs4, reboot.
+ExecStart=/usr/bin/python3 /usr/local/bin/gygeslink-setup-portal.py
+
+# ── Nettoyage à l'arrêt ───────────────────────────────────────────────
+# Supprimer toutes les règles de portail (même celles ajoutées par
+# network-setup.sh) pour éviter toute fuite persistante.
+ExecStopPost=/bin/sh -c 'while iptables -t nat -C PREROUTING -i usb0 -p tcp --dport 80 -j REDIRECT --to-port 443 2>/dev/null; do iptables -t nat -D PREROUTING -i usb0 -p tcp --dport 80 -j REDIRECT --to-port 443; done'
+ExecStopPost=/bin/sh -c 'while iptables -C INPUT -i usb0 -p tcp --dport 443 -j ACCEPT 2>/dev/null; do iptables -D INPUT -i usb0 -p tcp --dport 443 -j ACCEPT; done'
+ExecStopPost=/bin/sh -c 'while iptables -C OUTPUT -o usb0 -p tcp --sport 443 -j ACCEPT 2>/dev/null; do iptables -D OUTPUT -o usb0 -p tcp --sport 443 -j ACCEPT; done'
+
+User=root
+
+# Timeout généreux : le portail attend une action humaine
+TimeoutStartSec=300
+TimeoutStopSec=10
+
+Restart=no
+
+[Install]
+WantedBy=multi-user.target

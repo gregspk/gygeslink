@@ -1,0 +1,14 @@
+[Unit]
+Description=GygesLink — Jitter temporel tc netem (anti-corrélation)
+After=gygeslink-iptables-open.service
+Wants=gygeslink-iptables-open.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+
+ExecStart=/usr/local/bin/gygeslink-jitter.sh start
+ExecStop=/usr/local/bin/gygeslink-jitter.sh stop
+
+[Install]
+WantedBy=multi-user.target

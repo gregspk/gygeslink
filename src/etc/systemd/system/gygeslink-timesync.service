@@ -1,0 +1,26 @@
+[Unit]
+Description=GygesLink — Synchronisation horloge DS3231 RTC
+# DefaultDependencies=no : ce service doit démarrer AVANT la séquence
+# réseau standard de systemd, pour que l'heure soit correcte avant
+# tout paquet réseau (évite un éventuel NTP au boot = metadata leak).
+DefaultDependencies=no
+
+# S'assurer de démarrer avant les services qui ont besoin d'une heure correcte
+Before=gygeslink-network-setup.service
+Before=time-sync.target
+
+[Service]
+# oneshot : la commande s'exécute une fois et termine.
+# RemainAfterExit=yes : le service reste "actif" après la fin,
+# ce qui permet aux autres services d'exprimer After=gygeslink-timesync.
+Type=oneshot
+RemainAfterExit=yes
+
+# Lit l'heure depuis le DS3231 (I2C) via sysfs et l'applique à l'horloge système.
+# hwclock n'existe plus dans util-linux 2.41+ (Armbian Bookworm).
+# Alternative : lire /sys/class/rtc/rtc0/{time,date} et appliquer via date -s.
+# Requiert que I2C soit activé et que le module rtc-ds1307 soit chargé.
+ExecStart=/usr/local/bin/gygeslink-rtc-sync.sh
+
+[Install]
+WantedBy=multi-user.target
