@@ -43,12 +43,10 @@ if [ -f "$BRIDGES_CONF" ]; then
 fi
 
 if [ "$HAS_VALID_BRIDGES" = "1" ]; then
-    # Bridges valides présents → activer UseBridges
-    sed -i 's/^UseBridges 0/UseBridges 1/' "$TORRC" 2>/dev/null || true
+    sed -i 's/^UseBridges .*/UseBridges 1/' "$TORRC"
     LOG "Bridges obfs4 détectés — UseBridges actif."
 else
-    # Pas de bridges → désactiver UseBridges pour éviter l'échec de Tor
-    sed -i 's/^UseBridges 1/UseBridges 0/' "$TORRC" 2>/dev/null || true
+    sed -i 's/^UseBridges .*/UseBridges 0/' "$TORRC"
     ERR "ATTENTION : Aucun bridge obfs4 valide dans $BRIDGES_CONF."
     ERR "Tor démarrera SANS obfuscation obfs4 (visible comme Tor par le FAI)."
     ERR "Ajoutez 3 bridges obfs4 dans $BRIDGES_CONF et redémarrez."

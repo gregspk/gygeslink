@@ -292,11 +292,13 @@ def _get_led_color() -> str:
         return "blue_blink"
     with _status_lock:
         bootstrap = _status_cache.get("tor_bootstrap", 0)
+        noise = _status_cache.get("noise_active", False)
+        jitter = _status_cache.get("jitter_active", False)
     if bootstrap < 100:
         return "red_blink"
-    if bootstrap >= 100:
-        return "blue"
-    return "orange"
+    if not noise or not jitter:
+        return "orange"
+    return "blue"
 
 
 def _is_noise_active() -> bool:
@@ -577,15 +579,15 @@ def api_pause():
     try:
         subprocess.run(
             ["/usr/local/bin/gygeslink-iptables.sh", "bypass"],
-            capture_output=True, text=True, timeout=15,
+            capture_output=True, text=True, timeout=15, check=True,
         )
         subprocess.run(
             ["systemctl", "stop", "gygeslink-noise"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True, text=True, timeout=10, check=True,
         )
         subprocess.run(
             ["systemctl", "stop", "gygeslink-jitter"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True, text=True, timeout=10, check=True,
         )
         DATA_DIR.mkdir(parents=True, exist_ok=True)
         PAUSED_FILE.touch()
@@ -605,15 +607,15 @@ def api_resume():
     try:
         subprocess.run(
             ["/usr/local/bin/gygeslink-iptables.sh", "open"],
-            capture_output=True, text=True, timeout=15,
+            capture_output=True, text=True, timeout=15, check=True,
         )
         subprocess.run(
             ["systemctl", "start", "gygeslink-noise"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True, text=True, timeout=10, check=True,
         )
         subprocess.run(
             ["systemctl", "start", "gygeslink-jitter"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True, text=True, timeout=10, check=True,
         )
         PAUSED_FILE.unlink(missing_ok=True)
         logger.info("Mode Tor rétabli via API.")
@@ -639,6 +641,14 @@ def api_factory_reset():
     BRIDGES_CONF_FILE.write_text("# GygesLink — Bridges obfs4\n")
     BRIDGES_CONF_FILE.chmod(BRIDGES_CONF_PERM)
 
+    import shutil
+    updates_dir = DATA_DIR / "updates"
+    if updates_dir.exists():
+        shutil.rmtree(updates_dir, ignore_errors=True)
+    status_file = DATA_DIR / "update-status.json"
+    if status_file.exists():
+        status_file.unlink()
+
     subprocess.run(["netplan", "apply"], capture_output=True, timeout=30)
 
     subprocess.Popen(["bash", "-c", "sleep 3 && systemctl reboot"])
@@ -658,7 +668,7 @@ def api_logs():
 
 @app.route("/api/tor/circuit", methods=["GET"])
 def api_tor_circuit():
-    return jsonify({"status": "ok", "circuit": None})
+    return jsonify({"status": "ok", "circuits": _get_tor_circuits()})
 
 
 @app.route("/api/tor/new-identity", methods=["POST"])
@@ -700,13 +710,40 @@ def _get_current_version() -> str:
         return "0.0.0"
 
 
+def _compare_versions(v1: str, v2: str) -> int:
+    """Compare deux versions sémantiques. Retourne 1, 0, ou -1."""
+    try:
+        parts1 = [int(x) for x in v1.split(".")]
+        parts2 = [int(x) for x in v2.split(".")]
+    except ValueError:
+        return 0
+    for a, b in zip(parts1, parts2):
+        if a > b:
+            return 1
+        if a < b:
+            return -1
+    if len(parts1) > len(parts2):
+        return 1
+    if len(parts1) < len(parts2):
+        return -1
+    return 0
+
+
 def _check_github_release() -> dict:
-    import requests as req
     url = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
     try:
-        resp = req.get(url, timeout=15)
-        resp.raise_for_status()
-        data = resp.json()
+        result = subprocess.run(
+            [
+                "curl", "--socks5-hostname", "127.0.0.1:9050",
+                "-L", "-s", "--show-error",
+                "--max-time", "20",
+                url,
+            ],
+            capture_output=True, text=True, timeout=25,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(f"curl failed: {result.stderr.strip()[:200]}")
+        data = json.loads(result.stdout)
         latest = data.get("tag_name", "").lstrip("v")
         changelog = data.get("body", "")
         assets = data.get("assets", [])
@@ -722,7 +759,7 @@ def _check_github_release() -> dict:
             elif name == "SHA256SUMS.sig":
                 checksums_sig_url = asset.get("browser_download_url", "")
         current = _get_current_version()
-        available = latest > current
+        available = _compare_versions(latest, current) > 0
         return {
             "available": available,
             "current": current,
@@ -741,7 +778,6 @@ def _check_github_release() -> dict:
 @limiter.limit("2 per minute")
 def api_update_check():
     global _update_available, _update_version
-    import requests as req
     info = _check_github_release()
     if "error" in info:
         return _json_error("check_error", info["error"], 500)

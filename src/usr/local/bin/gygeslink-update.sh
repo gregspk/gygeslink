@@ -28,10 +28,19 @@ OVERLAYFS_WAS_ACTIVE=0
 LOG() { echo "[gygeslink-update] $*"; }
 ERR() { echo "[gygeslink-update] ERREUR: $*" >&2; }
 
+json_escape() {
+    local s="$1"
+    s="${s//\\/\\\\}"
+    s="${s//\"/\\\"}"
+    s="${s//$'\n'/\\n}"
+    s="${s//$'\r'/}"
+    echo -n "$s"
+}
+
 write_status() {
     local status="$1"
     local progress="${2:-0}"
-    local message="${3:-}"
+    local message="$(json_escape "${3:-}")"
     cat > "$STATUS_FILE" << EOF
 {"status": "$status", "progress": $progress, "version": "", "message": "$message"}
 EOF
@@ -40,8 +49,8 @@ EOF
 write_status_version() {
     local status="$1"
     local progress="${2:-0}"
-    local version="${3:-}"
-    local message="${4:-}"
+    local version="$(json_escape "${3:-}")"
+    local message="$(json_escape "${4:-}")"
     cat > "$STATUS_FILE" << EOF
 {"status": "$status", "progress": $progress, "version": "$version", "message": "$message"}
 EOF
@@ -138,8 +147,6 @@ extract_update() {
 
     LOG "Extraction de la mise à jour v${version}..."
 
-    mkdir -p /data/gygeslink/rollback
-
     tar xzf "$archive" -C /
 
     LOG "Fichiers extraits avec succès."
@@ -156,9 +163,9 @@ main() {
         exit 1
     fi
 
-    write_status "verifying" 40 "Vérification de la signature..."
+    write_status "installing" 60 "Installation des fichiers..."
 
-    # Vérifications de sécurité
+    # Vérifications de sécurité (l'API a déjà écrit le status "verifying")
     if ! verify_whitelist "$archive"; then
         write_status "error" 0 "Fichiers non autorisés dans l'archive"
         exit 1
@@ -177,9 +184,12 @@ main() {
     # Gestion overlayfs
     disable_overlayfs
 
+    # Trap : garantir le remontage RO en cas d'exit prématuré
+    # (set -e peut sortir à tout moment entre disable et enable)
+    trap 'enable_overlayfs' EXIT
+
     # Extraction
     if ! extract_update "$archive" "$version"; then
-        enable_overlayfs
         write_status "error" 0 "Échec de l'extraction"
         exit 1
     fi
@@ -190,6 +200,11 @@ main() {
 
     # Réactivation overlayfs si nécessaire
     enable_overlayfs
+    trap - EXIT
+
+    # Nettoyage des archives téléchargées
+    rm -rf "$DOWNLOAD_DIR"/* 2>/dev/null || true
+    LOG "Archives téléchargées nettoyées."
 
     write_status_version "done" 100 "$version" "Mise à jour terminée. Redémarrage..."
 

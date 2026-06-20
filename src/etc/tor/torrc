@@ -63,16 +63,16 @@ VirtualAddrNetworkIPv4 10.192.0.0/10
 
 # ── Bridges obfs4 — obfuscation du trafic Tor ────────────────────────
 #
-# Ces directives sont gérées DYNAMIQUEMENT par gygeslink-tor-prestart.sh.
-# Par défaut (aucune bridge configurée) : UseBridges 0, pas de
-# ClientTransportPlugin. Tor démarrera en mode direct.
+# UseBridges est géré DYNAMIQUEMENT par gygeslink-tor-prestart.sh.
+# ClientTransportPlugin est toujours présent (inoffensif sans UseBridges 1).
+# Par défaut (aucune bridge configurée) : UseBridges 0 → Tor en mode direct.
 #
 # Si des bridges sont présentes dans /data/gygeslink/bridges.conf,
-# le prestart activera automatiquement UseBridges 1 et configurera
-# obfs4proxy.
+# le prestart active UseBridges 1 → Tor utilise obfs4proxy pour se
+# connecter aux bridges (trafic obfusqué).
 #
-# UseBridges 1
-# ClientTransportPlugin obfs4 exec /usr/bin/obfs4proxy
+UseBridges 0
+ClientTransportPlugin obfs4 exec /usr/bin/obfs4proxy
 
 # ── Bridges chargés depuis la partition persistante ───────────────────
 # /data/gygeslink/bridges.conf contient les lignes "Bridge obfs4 ..."

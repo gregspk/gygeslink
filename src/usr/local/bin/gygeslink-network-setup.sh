@@ -13,6 +13,7 @@ LOG() { echo "[gygeslink-network] $*"; }
 ERR() { echo "[gygeslink-network] ERREUR: $*" >&2; }
 
 USB_ADDR="192.168.100.1/24"
+WIFI_TIMEOUT="${WIFI_TIMEOUT:-20}"
 
 if [ -f /data/gygeslink/network.conf ]; then
     LOG "Chargement de /data/gygeslink/network.conf..."
@@ -23,6 +24,7 @@ if [ -f /data/gygeslink/network.conf ]; then
         val="${val// /}"
         case "$key" in
             USB_ADDR) USB_ADDR="$val" ;;
+            WIFI_TIMEOUT) WIFI_TIMEOUT="$val" ;;
         esac
     done < /data/gygeslink/network.conf
 fi
@@ -102,7 +104,7 @@ if [ ! -f /data/gygeslink/wifi.conf ]; then
 else
     LOG "Attente IPv4 sur wlan0..."
     WAITED=0
-    while [ "$WAITED" -lt 30 ]; do
+    while [ "$WAITED" -lt "$WIFI_TIMEOUT" ]; do
         if ip addr show wlan0 2>/dev/null | grep -q "inet "; then
             WLAN0_IP=$(ip addr show wlan0 | awk '/inet / {print $2}')
             LOG "wlan0 connecté : $WLAN0_IP"
@@ -111,8 +113,8 @@ else
         sleep 1
         WAITED=$((WAITED + 1))
     done
-    if [ "$WAITED" -ge 30 ]; then
-        ERR "wlan0 n'a pas obtenu d'IPv4 en 30s."
+    if [ "$WAITED" -ge "$WIFI_TIMEOUT" ]; then
+        ERR "wlan0 n'a pas obtenu d'IPv4 en ${WIFI_TIMEOUT}s."
     fi
 fi
 
