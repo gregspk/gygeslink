@@ -3,7 +3,7 @@
 # Exécuté par gygeslink-network-setup.service (Type=oneshot)
 #
 # ARCHITECTURE RÉSEAU :
-#   - wlan0 : géré par netplan+systemd-networkd (WiFi + DHCP + macaddress: shuffle)
+#   - wlan0 : géré par NetworkManager (WiFi + DHCP + MAC random via NM)
 #   - usb0/usb1 : configuré ici (USB gadget NCM, côté PC)
 #   - iptables : fail-close appliqué ici AVANT que Tor ne démarre
 

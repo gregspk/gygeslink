@@ -372,7 +372,6 @@ network {{
         "  wifis:\n"
         "    wlan0:\n"
         "      dhcp4: true\n"
-        "      macaddress: shuffle\n"
         f'      access-points:\n'
         f'        "{ssid_escaped}":\n'
         f'          password: "{password_escaped}"\n'
