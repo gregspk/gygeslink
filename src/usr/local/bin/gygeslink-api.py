@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-GygesLink — API REST pour l'app desktop
+GygesLink - API REST pour l'app desktop
 
 Sert les endpoints /api/* pour la gestion à distance du boîtier.
 Écoute sur 192.168.100.1:4430 (HTTP, lien USB uniquement).
@@ -77,7 +77,7 @@ limiter = Limiter(
 )
 
 # ─────────────────────────────────────────────────────────────────────
-# Status cache — thread-safe, mis à jour en arrière-plan
+# Status cache - thread-safe, mis à jour en arrière-plan
 # ─────────────────────────────────────────────────────────────────────
 
 _status_cache = {}

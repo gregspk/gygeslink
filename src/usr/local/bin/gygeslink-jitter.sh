@@ -1,14 +1,14 @@
 #!/bin/bash
-# GygesLink — Jitter temporel via IFB + netem
+# GygesLink - Jitter temporel via IFB + netem
 #
 # IFB (Intermediate Functional Block) est une interface virtuelle kernel
 # qui reçoit le trafic sortant de wlan0 via tc mirred redirect.
-# netem est appliqué sur ifb0, PAS sur wlan0 — le driver WiFi reste
+# netem est appliqué sur ifb0, PAS sur wlan0; le driver WiFi reste
 # totalement intact. Le trafic de contrôle (DHCP, ARP, EAPOL) passe
 # directement par wlan0 sans délai.
 #
 # Flot de paquets :
-#   Paquet sortant → wlan0 (qdisc natif) → ingress mirred → ifb0 (netem) → wlan0 TX
+#   Paquet sortant > wlan0 (qdisc natif) > ingress mirred > ifb0 (netem) > wlan0 TX
 
 LOG_TAG="gygeslink-jitter"
 log() { logger -t "$LOG_TAG" "$@"; }

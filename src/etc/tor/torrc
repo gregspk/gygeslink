@@ -1,4 +1,4 @@
-# GygesLink — Configuration Tor
+# GygesLink - Configuration Tor
 # =====================================================================
 #
 # Ce fichier configure Tor comme proxy transparent pour tout le trafic
@@ -24,20 +24,20 @@ DataDirectory /var/lib/tor
 # Pour déboguer, remplacer par "info" temporairement.
 Log notice file /var/log/tor/notices.log
 
-# ── Port SOCKS — pour le noise daemon ────────────────────────────────
+# ── Port SOCKS - pour le noise daemon ────────────────────────────────
 # Le noise daemon (gygeslink-noise) utilise ce port pour envoyer
 # son trafic leurre via Tor.
 # Lié uniquement à 127.0.0.1 : inaccessible depuis le réseau externe.
 SocksPort 127.0.0.1:9050
 
-# ── ControlPort — pour l'API REST desktop ──────────────────────────
+# ── ControlPort - pour l'API REST desktop ──────────────────────────
 # Utilisé par gygeslink-api.py pour interroger l'état de Tor
 # (bootstrap, circuits, new-identity). Authentification par cookie.
 ControlPort 127.0.0.1:9051
 CookieAuthentication 1
 CookieAuthFile /var/lib/tor/control_auth_cookie
 
-# ── TransPort — proxy transparent TCP ────────────────────────────────
+# ── TransPort - proxy transparent TCP ────────────────────────────────
 # Écoute sur 192.168.100.1:9040 (l'IP du Pi côté PC).
 # iptables redirige tout TCP entrant sur usb0 vers ce port.
 # Flags d'isolation : chaque combinaison client/proto/dest obtient
@@ -50,7 +50,7 @@ CookieAuthFile /var/lib/tor/control_auth_cookie
 #
 TransPort 192.168.100.1:9040 IsolateClientAddr IsolateClientProtocol IsolateDestAddr IsolateDestPort
 
-# ── DNSPort — résolution DNS via Tor ─────────────────────────────────
+# ── DNSPort - résolution DNS via Tor ─────────────────────────────────
 # Écoute sur 192.168.100.1:5353.
 DNSPort 192.168.100.1:5353
 
@@ -61,7 +61,7 @@ DNSPort 192.168.100.1:5353
 AutomapHostsOnResolve 1
 VirtualAddrNetworkIPv4 10.192.0.0/10
 
-# ── Bridges obfs4 — obfuscation du trafic Tor ────────────────────────
+# ── Bridges obfs4 - obfuscation du trafic Tor ────────────────────────
 #
 # UseBridges est géré DYNAMIQUEMENT par gygeslink-tor-prestart.sh.
 # ClientTransportPlugin est toujours présent (inoffensif sans UseBridges 1).

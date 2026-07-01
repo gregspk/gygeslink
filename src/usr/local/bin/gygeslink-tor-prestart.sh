@@ -1,12 +1,12 @@
 #!/bin/bash
-# GygesLink — Configuration de Tor avant démarrage
+# GygesLink - Configuration de Tor avant démarrage
 # Exécuté en ExecStartPre par gygeslink-tor.service
 #
 # Active/désactive UseBridges selon la présence de bridges obfs4 valides
 # dans /data/gygeslink/bridges.conf.
 #
 # Note : torrc est sur le rootfs (overlayfs actif en prod).
-# Les modifications sont volatiles — réinitialisées à chaque reboot.
+# Les modifications sont volatiles; réinitialisées à chaque reboot.
 
 set -euo pipefail
 
@@ -21,11 +21,11 @@ ERR() { echo "[gygeslink-tor-prestart] ERREUR: $*" >&2; }
 # bridges.conf peut être vide (premier boot avant configuration manuelle)
 # ou ne contenir que des placeholders.
 # Si aucune vraie bridge n'est présente, on désactive UseBridges pour
-# éviter que Tor refuse de démarrer — le trafic passera quand même par Tor
+# éviter que Tor refuse de démarrer; le trafic passera quand même par Tor
 # mais sans obfuscation obfs4 (moins discret, toujours anonyme).
 #
 # Format d'une vraie bridge : "Bridge obfs4 A.B.C.D:PORT FINGERPRINT cert=..."
-# Un placeholder contient "REMPLACER" — on le détecte pour l'ignorer.
+# Un placeholder contient "REMPLACER", on le détecte pour l'ignorer.
 
 BRIDGES_CONF="/data/gygeslink/bridges.conf"
 HAS_VALID_BRIDGES=0

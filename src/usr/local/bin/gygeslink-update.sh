@@ -1,5 +1,5 @@
 #!/bin/bash
-# GygesLink — OTA Update
+# GygesLink - OTA Update
 # Télécharge, vérifie et installe une mise à jour depuis GitHub Releases.
 # Le téléchargement passe par Tor (SOCKS5 127.0.0.1:9050).
 # La signature GPG et les checksums SHA256 sont vérifiés avant extraction.

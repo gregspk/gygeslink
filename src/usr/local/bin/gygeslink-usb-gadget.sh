@@ -1,8 +1,8 @@
 #!/bin/bash
-# GygesLink — USB Gadget Ethernet (CDC-NCM via configfs)
+# GygesLink - USB Gadget Ethernet (CDC-NCM via configfs)
 # Compatible Windows 10/11 (driver NCM natif, ZERO installation)
 # Compatible Linux/Mac (driver CDC-NCM standard)
-# Orange Pi Zero 2W — port USB-C OTG
+# Orange Pi Zero 2W / port USB-C OTG
 #
 # Prérequis (modules-load.d/gygeslink.conf) :
 #   dwc2, libcomposite, usb_f_ncm

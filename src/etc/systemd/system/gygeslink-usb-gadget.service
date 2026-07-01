@@ -1,5 +1,5 @@
 [Unit]
-Description=GygesLink — USB Ethernet Gadget (configfs RNDIS)
+Description=GygesLink - USB Ethernet Gadget (configfs RNDIS)
 # Doit démarrer très tôt, avant le réseau et bien avant network-setup
 DefaultDependencies=no
 After=sys-kernel-config.mount

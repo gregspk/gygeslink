@@ -1,5 +1,5 @@
 #!/bin/bash
-# GygesLink — Configuration réseau au boot
+# GygesLink - Configuration réseau au boot
 # Exécuté par gygeslink-network-setup.service (Type=oneshot)
 #
 # ARCHITECTURE RÉSEAU :

@@ -1,9 +1,9 @@
-# GygesLink — règles iptables actives (Tor opérationnel)
+# GygesLink - règles iptables actives (Tor opérationnel)
 # Remplacent les règles drop une fois que Tor a bootstrappé à 100%.
 # Si Tor s'arrête, gygeslink-iptables-open.service restaure les règles drop.
 
 # ─────────────────────────────────────────────────────────────────────
-# TABLE NAT — redirection transparente vers Tor
+# TABLE NAT - redirection transparente vers Tor
 # ─────────────────────────────────────────────────────────────────────
 *nat
 :PREROUTING ACCEPT [0:0]
@@ -37,7 +37,7 @@
 COMMIT
 
 # ─────────────────────────────────────────────────────────────────────
-# TABLE MANGLE — ajustements des paquets
+# TABLE MANGLE - ajustements des paquets
 # ─────────────────────────────────────────────────────────────────────
 *mangle
 :PREROUTING ACCEPT [0:0]
@@ -57,7 +57,7 @@ COMMIT
 COMMIT
 
 # ─────────────────────────────────────────────────────────────────────
-# TABLE FILTER — politique de filtrage
+# TABLE FILTER - politique de filtrage
 # ─────────────────────────────────────────────────────────────────────
 *filter
 :INPUT DROP [0:0]

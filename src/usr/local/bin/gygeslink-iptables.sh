@@ -1,5 +1,5 @@
 #!/bin/bash
-# GygesLink — Appliquer les règles iptables de redirection Tor
+# GygesLink - Appliquer les règles iptables de redirection Tor
 # Exécuté par gygeslink-iptables-open.service
 
 LOG_TAG="gygeslink-iptables"

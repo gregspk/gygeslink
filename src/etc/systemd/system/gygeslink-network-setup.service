@@ -1,7 +1,7 @@
 [Unit]
-Description=GygesLink — Configuration usb0 + iptables fail-close
+Description=GygesLink - Configuration usb0 + iptables fail-close
 # Ce service configure usb0 et applique iptables.
-# wlan0 est géré par netplan+systemd-networkd — on n'y touche PAS.
+# wlan0 est géré par netplan+systemd-networkd; on n'y touche PAS.
 # On attend que le réseau soit prêt (y compris WiFi via networkd).
 
 After=gygeslink-usb-gadget.service
@@ -17,7 +17,7 @@ RemainAfterExit=yes
 
 # Le script fait :
 #   1. Randomiser l'adresse MAC de wlan0 (anti-tracking FAI)
-#   2. Configurer usb0 (192.168.100.1/24) — USB gadget côté PC
+#   2. Configurer usb0 (192.168.100.1/24) - USB gadget côté PC
 #   3. Lancer dnsmasq (DHCP pour le PC sur usb0)
 #   4. Attendre que wlan0 obtienne une IPv4 via networkd
 #   5. Appliquer iptables fail-close atomiquement

@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
-GygesLink — Captive portal de setup
+GygesLink - Captive portal de setup
 
 Serveur HTTPS Flask pour la configuration initiale du boîtier.
 Actif uniquement au premier boot (absence de /data/gygeslink/setup-done).
 
 Flux :
-  1. L'utilisateur branche le boîtier en USB-C
+  1. L'user branche le boîtier en USB-C
   2. Le navigateur détecte le portail (réponses aux sondes captive portal)
-  3. L'utilisateur configure le WiFi, les bridges obfs4, puis valide
+  3. L'user configure le WiFi, les bridges obfs4, puis valide
   4. Le portail écrit la configuration et reboot
 
 Sécurité :

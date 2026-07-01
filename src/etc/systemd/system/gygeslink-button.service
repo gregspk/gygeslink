@@ -1,5 +1,5 @@
 [Unit]
-Description=GygesLink — Surveillance bouton GPIO (reset mode setup)
+Description=GygesLink - Surveillance bouton GPIO (reset mode setup)
 # Démarre après tous les services principaux
 # (on veut que le système soit stable avant d'autoriser un reset)
 After=multi-user.target

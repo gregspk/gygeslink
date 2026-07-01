@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-GygesLink — Noise daemon (générateur de trafic leurre)
+GygesLink - Noise daemon (générateur de trafic leurre)
 
 Envoie des requêtes HTTPS vers des sites courants à intervalles aléatoires,
 exclusivement via le SocksPort de Tor (127.0.0.1:9050).
@@ -11,7 +11,7 @@ impossible la distinction entre le "vrai" trafic et le bruit de fond.
 Sécurité :
   - Tourne sous l'utilisateur gygeslink-noise (non root, non debian-tor)
   - iptables bloque tout OUTPUT de cet utilisateur sauf vers 127.0.0.1:9050
-  - aiohttp-socks lève une exception si le proxy est injoignable —
+  - aiohttp-socks lève une exception si le proxy est injoignable;
     il ne fait JAMAIS de fallback vers une connexion directe
 
 Démarré par gygeslink-noise.service, après gygeslink-iptables-open.service.
@@ -33,19 +33,19 @@ from aiohttp_socks import ProxyConnector, ProxyConnectionError
 TOR_SOCKS_PROXY = "socks5://127.0.0.1:9050"
 
 # Intervalle entre deux requêtes (secondes)
-INTERVAL_MIN = 2.0
-INTERVAL_MAX = 12.0
+INTERVAL_MIN = 8.0
+INTERVAL_MAX = 35.0
 
 # Nombre maximum de requêtes simultanées
 # Évite de surcharger Tor avec trop de circuits parallèles
-MAX_CONCURRENT = 3
+MAX_CONCURRENT = 2
 
 # Timeout par requête (secondes)
 REQUEST_TIMEOUT = 20
 
 # Sites vers lesquels envoyer du trafic leurre.
 # Choisis pour leur fréquence d'accès "normale" sur internet.
-# Aucun site sensible ou identifiant — le but est de ressembler
+# Aucun site sensible ou identifiant, le but est de ressembler
 # à une navigation ordinaire.
 NOISE_TARGETS = [
     "https://www.wikipedia.org",
@@ -57,9 +57,36 @@ NOISE_TARGETS = [
     "https://www.debian.org",
     "https://news.ycombinator.com",
     "https://www.eff.org",
-    "https://www.torproject.org",
     "https://www.archive.org",
     "https://www.gutenberg.org",
+    "https://www.service-public.gouv.fr",
+    "https://www.legifrance.gouv.fr",
+    "https://www.cnil.fr",
+    "https://meteofrance.com",
+    "https://www.education.gouv.fr",
+    "https://www.economie.gouv.fr",
+    "https://www.france24.com/fr/",
+    "https://www.francetvinfo.fr",
+    "https://www.radiofrance.fr",
+    "https://www.arte.tv/fr/",
+    "https://www.bnf.fr",
+    "https://fr.wikipedia.org/wiki/Wikip%C3%A9dia:Accueil_principal",
+    "https://www.gov.uk",
+    "https://www.nasa.gov",
+    "https://www.loc.gov",
+    "https://www.cdc.gov",
+    "https://www.census.gov",
+    "https://developer.mozilla.org",
+    "https://www.w3.org",
+    "https://www.ietf.org",
+    "https://www.kernel.org",
+    "https://www.gnu.org",
+    "https://docs.python.org/3/",
+    "https://www.postgresql.org",
+    "https://www.npr.org",
+    "https://www.theguardian.com/international",
+    "https://www.britannica.com",
+    "https://www.smithsonianmag.com",
 ]
 
 # ─────────────────────────────────────────────────────────────────────
@@ -100,8 +127,8 @@ async def fetch_noise(
                 logger.debug("OK %d %s", response.status, url)
 
         except ProxyConnectionError:
-            # Le proxy Tor est injoignable — Tor n'est peut-être pas encore
-            # complètement démarré. On attend, on ne panic pas.
+            # Le proxy Tor est injoignable - Tor n'est peut-être pas encore
+            # complètement démarré. On attend, on ne panique pas.
             logger.debug("Proxy Tor injoignable pour %s — attente.", url)
 
         except aiohttp.ClientError as e:
@@ -129,7 +156,7 @@ async def noise_loop() -> None:
     il n'y a JAMAIS de fallback vers une connexion directe.
     """
     semaphore = asyncio.Semaphore(MAX_CONCURRENT)
-    # Référence forte sur les tasks actives — évite les warnings GC Python 3.12+
+    # Référence forte sur les tasks actives, évite les warnings GC Python 3.12+
     _tasks: set[asyncio.Task] = set()
 
     # ProxyConnector force toutes les connexions via SOCKS5 (Tor).

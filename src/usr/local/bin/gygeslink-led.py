@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-GygesLink — Daemon LED RGB (Orange Pi Zero 2W)
+GygesLink - Daemon LED RGB (Orange Pi Zero 2W)
 
 Indique l'état de protection du boîtier en temps réel via une LED RGB.
 
@@ -17,7 +17,7 @@ Câblage GPIO (Orange Pi Zero 2W — Allwinner H618, header 26-pin) :
     GPIO_G=227
     GPIO_B=261
 
-Utilise sysfs (/sys/class/gpio) pour le contrôle GPIO — compatible
+Utilise sysfs (/sys/class/gpio) pour le contrôle GPIO / compatible
 avec tous les kernels, sans dépendance à une version de libgpiod.
 
 États :

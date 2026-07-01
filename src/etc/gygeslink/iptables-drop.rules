@@ -1,6 +1,6 @@
-# GygesLink — règles iptables fail-close
+# GygesLink - règles iptables fail-close
 # Appliquées au boot AVANT toute ouverture réseau.
-# Tout trafic est bloqué par défaut — l'ouverture n'a lieu que si Tor est opérationnel.
+# Tout trafic est bloqué par défaut, l'ouverture n'a lieu que si Tor est opérationnel.
 
 *filter
 :INPUT DROP [0:0]

@@ -1,8 +1,8 @@
 [Unit]
-Description=GygesLink — Daemon LED RGB (indicateur d'état)
+Description=GygesLink - Daemon LED RGB (indicateur d'état)
 # La LED démarre en dernier : elle reflète l'état de toute la chaîne.
 # Si elle ne démarre pas (gygeslink-led.py manquant), ce n'est pas
-# un problème de sécurité — le trafic reste protégé.
+# un problème de sécurité - le trafic reste protégé.
 After=gygeslink-iptables-open.service
 After=gygeslink-noise.service
 After=gygeslink-jitter.service

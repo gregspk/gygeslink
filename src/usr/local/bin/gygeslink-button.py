@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-GygesLink — Daemon de surveillance du bouton GPIO (Orange Pi Zero 2W)
+GygesLink - Daemon de surveillance du bouton GPIO (Orange Pi Zero 2W)
 
-Câblage (Orange Pi Zero 2W — Allwinner H618, header 26-pin) :
+Câblage (Orange Pi Zero 2W) :
   Bouton connecté entre Pin 7 (PI13/GPIO 269) et GND (Pin 9).
   Pull-up interne activée : HIGH = relâché, LOW = pressé.
   Debounce logiciel : 50ms de stabilité requise.
@@ -11,7 +11,7 @@ Comportement :
   Maintien 5 secondes  → reboot
   Maintien 20 secondes → factory reset (supprime config + reboot)
 
-Utilise sysfs (/sys/class/gpio) pour le contrôle GPIO — compatible
+Utilise sysfs (/sys/class/gpio) pour le contrôle GPIO / compatible
 avec tous les kernels, sans dépendance à une version de libgpiod.
 """
 

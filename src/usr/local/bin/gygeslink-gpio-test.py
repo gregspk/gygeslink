@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-GygesLink — Utilitaire de test GPIO (Orange Pi Zero 2W)
+GygesLink - Utilitaire de test GPIO (Orange Pi Zero 2W)
 
 Teste chaque ligne GPIO configurée dans /data/gygeslink/gpio.conf :
   1. Allume chaque couleur de LED (R, G, B) pendant 2s

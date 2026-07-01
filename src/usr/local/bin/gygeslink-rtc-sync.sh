@@ -1,5 +1,5 @@
 #!/bin/bash
-# GygesLink — Synchronisation horloge DS3231 RTC
+# GygesLink - Synchronisation horloge DS3231 RTC
 # Lit l'heure du RTC via sysfs et l'applique à l'horloge système.
 # hwclock n'existe plus dans util-linux 2.41+ (Armbian Bookworm).
 

@@ -1,5 +1,5 @@
 [Unit]
-Description=GygesLink — Jitter temporel tc netem (anti-corrélation)
+Description=GygesLink - Jitter temporel tc netem (anti-corrélation)
 After=gygeslink-iptables-open.service
 Wants=gygeslink-iptables-open.service
 

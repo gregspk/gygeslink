@@ -5,20 +5,20 @@ Boîtier physique plug-and-play qui anonymise le trafic réseau de votre PC via 
 ## Comment ça marche
 
 ```
-[PC] ── USB-C ──> [GygesLink] ── WiFi ──> [Box FAI] ──> Internet
+[PC] ──> USB-C ──> [GygesLink] ──> WiFi ──> [Box FAI] ──> Internet
 ```
 
-Le PC voit le boîtier comme une carte réseau USB. Tout le trafic TCP/DNS passe automatiquement par Tor avant de sortir sur le réseau, transparent pour l'utilisateur.
+Le PC voit le boîtier comme une carte réseau USB. Tout le trafic TCP/DNS passe automatiquement par Tor avant de sortir sur le réseau, ceci est transparent pour l'utilisateur.
 
-### Protection
+### Protection en 4 couches
 
-**Tor + obfs4 + jitter + bruit de fond** : une seule couche de protection, complète.
+**Tor + obfs4 + jitter + bruit de fond** : forment une protection complète.
 
 ### Les couches
 
-1. **Tor + obfs4** : anonymisation + obfuscation DPI (le trafic ressemble à du TLS aléatoire)
-2. **Jitter temporel** : délai aléatoire par paquet (tc netem, distribution Pareto) contre la corrélation temporelle
-3. **Bruit de fond** : requêtes HTTPS aléatoires vers domaines courants via Tor pour masquer les métadonnées
+1. **Tor + obfs4** : anonymisation + obfuscation DPI (le trafic ressemble à du TLS aléatoire).
+2. **Jitter temporel** : délai aléatoire par paquet (tc netem, distribution Pareto) contre la corrélation temporelle.
+3. **Bruit de fond** : requêtes HTTPS aléatoires vers domaines courants via Tor pour masquer les métadonnées.
 
 ### Fail-close
 
@@ -27,19 +27,19 @@ Les règles iptables DROP s'appliquent avant que le réseau soit disponible. Si 
 ## Matériel
 
 - Orange Pi Zero 2W 1GB (WiFi intégré + USB-C OTG)
-- Hat custom 
+- Hat custom
 - Module RTC DS3231 (horloge sans réseau au boot)
 - LED RGB + bouton poussoir
-- Boîtier imprimé 3D
+- Boîtier imprimé 3D (PLA dans un premier temps, puis PC-FR par la suite)
 
 ## Premier démarrage
 
-1. Télécharger l'application GygesLink Desktop
-2. Brancher le boîtier en USB-C sur le PC → LED blanche clignotante
+1. Télécharger l'application GygesLink Desktop (www.gygeslink.com/start)
+2. Brancher le boîtier en USB-C sur le PC ──> LED blanche clignotante
 3. Ouvrir l'application GygesLink Desktop
 4. Saisir le SSID + mot de passe WiFi du routeur
-5. Configurer les bridges obfs4 (optionnel)
-6. Valider → Reboot automatique → LED bleue = protection active
+5. Configurer les bridges obfs4 (ceci est optionnel mais recommandé, sans ça : pas d'obfs4)
+6. Valider ──> Reboot automatique ──> Attendre entre 1 & 3 minutes ──> LED bleue = protection active
 
 Le bouton physique : maintien 5s = reboot, maintien 20s = factory reset.
 
@@ -60,4 +60,4 @@ Le bouton physique : maintien 5s = reboot, maintien 20s = factory reset.
 
 ## Stack technique
 
-Armbian (Debian 12) · Tor >= 0.4.8 · obfs4proxy · iptables · tc netem · Python 3 asyncio · Flask · systemd
+Armbian (Debian 12) - Tor >= 0.4.8 - obfs4proxy - iptables - tc netem - Python 3 asyncio - Flask - systemd

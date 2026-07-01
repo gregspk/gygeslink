@@ -1,13 +1,13 @@
-# GygesLink — règles iptables bypass (mode pause)
+# GygesLink - règles iptables bypass (mode pause)
 # Le trafic du PC passe directement par wlan0 sans passer par Tor.
 # Tor continue de tourner pour une reprise quasi instantanée.
 #
 # NOTE : la règle DNAT pour le DNS est injectée dynamiquement par
 # gygeslink-iptables.sh (gateway détectée via `ip route show default`).
-# Ce fichier est un template — il ne contient PAS la ligne DNAT.
+# Ce fichier est un template, il ne contient PAS la ligne DNAT.
 
 # ─────────────────────────────────────────────────────────────────────
-# TABLE NAT — aucun redirect vers Tor, masquerade sortant
+# TABLE NAT - aucun redirect vers Tor, masquerade sortant
 # ─────────────────────────────────────────────────────────────────────
 *nat
 :PREROUTING ACCEPT [0:0]
@@ -36,7 +36,7 @@ COMMIT
 COMMIT
 
 # ─────────────────────────────────────────────────────────────────────
-# TABLE FILTER — forwarding autorisé usb0→wlan0
+# TABLE FILTER - forwarding autorisé usb0→wlan0
 # ─────────────────────────────────────────────────────────────────────
 *filter
 :INPUT DROP [0:0]

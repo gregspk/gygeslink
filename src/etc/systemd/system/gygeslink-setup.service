@@ -1,5 +1,5 @@
 [Unit]
-Description=GygesLink Setup — Portail de configuration (premier boot)
+Description=GygesLink Setup - Portail de configuration (premier boot)
 # Ne démarre QUE si le setup n'a pas encore été fait
 ConditionPathExists=!/data/gygeslink/setup-done
 
@@ -29,7 +29,7 @@ ExecStartPre=/bin/sh -c 'iptables -C OUTPUT -o usb0 -p tcp --sport 443 -j ACCEPT
 
 # ── Processus principal : portail Flask ──────────────────────────────
 # Flask écoute sur 192.168.100.1:443 (HTTPS, certificat auto-signé).
-# Accessible depuis le PC branché en USB-C — pas besoin de WiFi.
+# Accessible depuis le PC branché en USB-C, pas besoin de WiFi.
 # Gère le premier boot : config WiFi, bridges obfs4, reboot.
 ExecStart=/usr/bin/python3 /usr/local/bin/gygeslink-setup-portal.py
 
@@ -42,7 +42,7 @@ ExecStopPost=/bin/sh -c 'while iptables -C OUTPUT -o usb0 -p tcp --sport 443 -j 
 
 User=root
 
-# Timeout généreux : le portail attend une action humaine
+# Timeout généreux : le portail attend une action
 TimeoutStartSec=300
 TimeoutStopSec=10
 

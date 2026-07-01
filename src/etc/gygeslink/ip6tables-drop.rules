@@ -1,4 +1,4 @@
-# GygesLink — règles ip6tables fail-close
+# GygesLink - règles ip6tables fail-close
 # IPv6 est désactivé par design (sysctl disable_ipv6=1).
 # Ces règles constituent une deuxième ligne de défense au cas où
 # IPv6 serait réactivé accidentellement.

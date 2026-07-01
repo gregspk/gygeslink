@@ -1,5 +1,5 @@
 [Unit]
-Description=GygesLink — Synchronisation horloge DS3231 RTC
+Description=GygesLink - Synchronisation horloge DS3231 RTC
 # DefaultDependencies=no : ce service doit démarrer AVANT la séquence
 # réseau standard de systemd, pour que l'heure soit correcte avant
 # tout paquet réseau (évite un éventuel NTP au boot = metadata leak).

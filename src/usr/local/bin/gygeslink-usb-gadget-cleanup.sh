@@ -1,6 +1,6 @@
 #!/bin/bash
-# GygesLink — Nettoyage du gadget USB configfs à l'arrêt du service.
-# Configfs est un pseudo-filesystem — les suppressions doivent se faire
+# GygesLink - Nettoyage du gadget USB configfs à l'arrêt du service.
+# Configfs est un pseudo-filesystem; les suppressions doivent se faire
 # dans l'ordre inverse de la création. Ce script gère ces contraintes.
 #
 # Référence : https://github.com/adam-burns/devuan-pi-gadgeteer
