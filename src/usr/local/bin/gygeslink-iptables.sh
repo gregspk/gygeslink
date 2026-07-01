@@ -100,12 +100,21 @@ case "$1" in
             cat /tmp/ip6tables-restore-err.log | logger -t "$LOG_TAG"
         }
 
-        GW=$(ip route show default | awk '/default/ && /wlan0/ {print $3}')
+        GW=$(ip route show default | awk '/default/ && /wlan0/ {print $3}' | head -1)
+        if [ -z "$GW" ]; then
+            GW=$(nmcli -g IP4.GATEWAY device show wlan0 2>/dev/null | head -1)
+        fi
+        if [ -z "$GW" ]; then
+            GW=$(ip -4 route show default | awk '{print $3}' | head -1)
+        fi
         if [ -n "$GW" ]; then
             iptables -t nat -A PREROUTING -i "${USB_IF:-usb0}" -p udp --dport 53 -j DNAT --to-destination "$GW"
+            iptables -t nat -A PREROUTING -i "${USB_IF:-usb0}" -p tcp --dport 53 -j DNAT --to-destination "$GW"
             log "DNS DNAT vers gateway: $GW"
         else
-            err "Aucune gateway default sur wlan0 — DNS du PC ne fonctionnera pas en bypass."
+            err "Aucune gateway détectée — utilisation du DNS fallback 1.1.1.1"
+            iptables -t nat -A PREROUTING -i "${USB_IF:-usb0}" -p udp --dport 53 -j DNAT --to-destination 1.1.1.1
+            iptables -t nat -A PREROUTING -i "${USB_IF:-usb0}" -p tcp --dport 53 -j DNAT --to-destination 1.1.1.1
         fi
 
         conntrack -F 2>/dev/null || log "conntrack -F ignoré (paquet absent, non critique)"
